@@ -7,3 +7,6 @@ tiguans.json
 .DS_Store
 *.log
 data/*.tmp.json
+# The applet is a .app bundle (binary, code-signed at build time on the
+# Mac running it). Rebuild locally with bin/build-applet.sh.
+bin/ScrapeRunner.app/
