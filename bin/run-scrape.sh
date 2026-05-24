@@ -6,7 +6,7 @@
 #   GH_TOKEN_FILE=~/.config/turo-scraper/gh-token
 set -euo pipefail
 
-REPO="/Users/nickorefice/Documents/GitHub/turo-ai-scaper"
+REPO="/Users/nickorefice/code/turo-ai-scaper"
 NODE="/opt/homebrew/bin/node"
 LOCK="/tmp/turo-scraper.lock"
 AUTO_COMMIT="${AUTO_COMMIT:-0}"

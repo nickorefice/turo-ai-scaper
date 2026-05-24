@@ -7,11 +7,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper/bin/run-scrape.sh</string>
+        <string>/Users/nickorefice/code/turo-ai-scaper/bin/run-scrape.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper</string>
+    <string>/Users/nickorefice/code/turo-ai-scaper</string>
 
     <!-- Fire once a day at 09:00 local time -->
     <key>StartCalendarInterval</key>
@@ -27,9 +27,9 @@
     <false/>
 
     <key>StandardOutPath</key>
-    <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper/logs/launchd.out.log</string>
+    <string>/Users/nickorefice/code/turo-ai-scaper/logs/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper/logs/launchd.err.log</string>
+    <string>/Users/nickorefice/code/turo-ai-scaper/logs/launchd.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
