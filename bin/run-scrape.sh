@@ -47,25 +47,25 @@ if [ -n "$DIRTY" ]; then
 fi
 
 # Discover groups from config (e.g., "tiguans taos corolla-hybrid civic 2-series").
-if ! GROUPS="$(jq -r '.groups[].group_id' "$CONFIG" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; then
+if ! GROUP_IDS="$(jq -r '.groups[].group_id' "$CONFIG" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; then
   log "ERROR: could not parse $CONFIG with jq"
   exit 1
 fi
-if [ -z "$GROUPS" ]; then
+if [ -z "$GROUP_IDS" ]; then
   log "ERROR: no groups found in $CONFIG"
   exit 1
 fi
-log "discovered groups: $GROUPS"
+log "discovered groups: $GROUP_IDS"
 
 log "starting scrape across all groups"
 "$NODE" src/scrape.js 2>> "$LOG" > /dev/null
 log "scrape finished"
 
 # Validate per-(group, window) output files. Track which groups have full data.
-OK_GROUPS=()
-FAILED_GROUPS=()
+OK_GROUP_IDS=()
+FAILED_GROUP_IDS=()
 COMMIT_FILES=()
-for group in $GROUPS; do
+for group in $GROUP_IDS; do
   group_ok=1
   for win in "window-a-3day" "window-b-4day"; do
     f="data/AUS-${group}-${DATE}-${win}.json"
@@ -84,15 +84,15 @@ for group in $GROUPS; do
     COMMIT_FILES+=("$f")
   done
   if [ "$group_ok" = "1" ]; then
-    OK_GROUPS+=("$group")
+    OK_GROUP_IDS+=("$group")
   else
-    FAILED_GROUPS+=("$group")
+    FAILED_GROUP_IDS+=("$group")
   fi
 done
 
-log "scrape summary: ok=[${OK_GROUPS[*]:-}] failed=[${FAILED_GROUPS[*]:-}]"
+log "scrape summary: ok=[${OK_GROUP_IDS[*]:-}] failed=[${FAILED_GROUP_IDS[*]:-}]"
 
-if [ "${#OK_GROUPS[@]}" -eq 0 ]; then
+if [ "${#OK_GROUP_IDS[@]}" -eq 0 ]; then
   log "ERROR: no groups produced valid output — refusing to commit/email"
   exit 1
 fi
@@ -112,7 +112,7 @@ if [ "$AUTO_COMMIT" = "1" ]; then
     exit 1
   }
 
-  OK_LIST="$(IFS=,; echo "${OK_GROUPS[*]}")"
+  OK_LIST="$(IFS=,; echo "${OK_GROUP_IDS[*]}")"
   log "staging + committing ${#COMMIT_FILES[@]} files for groups: ${OK_LIST}"
   git add -- "${COMMIT_FILES[@]}"
   if git diff --cached --quiet; then
@@ -134,7 +134,7 @@ fi
 # Per-group email sends. Each group is independent — one failure does not block others.
 SEND_EMAIL="${SEND_EMAIL:-1}"
 if [ "$SEND_EMAIL" = "1" ]; then
-  for group in "${OK_GROUPS[@]}"; do
+  for group in "${OK_GROUP_IDS[@]}"; do
     log "sending email for group: $group"
     if GROUP_ID="$group" "$NODE" src/send-email.js 2>> "$LOG"; then
       log "  email sent for $group"
@@ -143,7 +143,7 @@ if [ "$SEND_EMAIL" = "1" ]; then
     fi
   done
   # Send alert email per failed group (uses the [ALERT] codepath in send-email.js).
-  for group in "${FAILED_GROUPS[@]}"; do
+  for group in "${FAILED_GROUP_IDS[@]}"; do
     log "sending [ALERT] for failed group: $group"
     GROUP_ID="$group" "$NODE" src/send-email.js 2>> "$LOG" || log "  ERROR: alert send failed for $group"
   done
