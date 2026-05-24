@@ -1,4 +1,24 @@
 #!/usr/bin/env node
+// Multi-group Turo competitor scraper.
+//
+// Reads config/my-listings.json (groups[] schema). For each group, runs a Turo
+// search for that make + models in Austin across two date windows (A: 3-day
+// immediate, B: 4-day next week), then visits each result's listing page to
+// capture the host name. Writes one JSON file per (group, window) into data/.
+//
+// Env vars:
+//   GROUP_ID    — restrict to a single group (e.g. "tiguans", "taos"). Default: all groups.
+//   WINDOW      — "a", "b", or "all" (default "all").
+//   OUT_DIR     — output directory (default: data/ at repo root).
+//   NO_WRITE=1  — skip file writes (still prints JSON summary to stdout).
+//   HEADLESS=1  — run Chromium headless (default: visible window for bot-detection avoidance).
+//
+// Output filename: AUS-{group_id}-YYYY-MM-DD-window-{a|b}-{N}day.json
+//
+// Multi-group runs share one browser/context for politeness and bot-detection
+// coherence. Each group has its own 5-min timeout — one hung group does not
+// block the others. Inter-group delay: 3-8s randomized.
+
 import { chromium } from "patchright";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -15,14 +35,14 @@ const LOCATION = {
   region: "TX",
   country: "US",
 };
-const MAKE = "Volkswagen";
-const MODELS = ["Tiguan", "Tiguan Limited"];
 const ALLOWED_CITY_SLUGS = ["austin-tx"];
 
 const WINDOW_SPECS = {
   a: { id: "a", days: 3, offset_days: 1, label: "window-a-3day" }, // pickup today+1, return today+4
   b: { id: "b", days: 4, offset_days: 4, label: "window-b-4day" }, // pickup today+4, return today+8
 };
+
+const GROUP_ID_RE = /^[a-z0-9-]+$/;
 
 function ymd(d) {
   const yyyy = d.getFullYear();
@@ -44,24 +64,53 @@ function addDays(d, n) {
   return out;
 }
 
-function loadMyListings() {
+function loadConfig() {
   const path = join(REPO_ROOT, "config", "my-listings.json");
-  try {
-    const raw = readFileSync(path, "utf8");
-    const parsed = JSON.parse(raw);
-    const map = new Map();
-    for (const item of parsed.listings || []) {
-      if (item.listing_id) map.set(String(item.listing_id), item.label || String(item.listing_id));
-    }
-    console.error(`Loaded ${map.size} owner listing(s) from config/my-listings.json`);
-    return { owner_label: parsed.owner_label || null, map };
-  } catch (err) {
-    console.error(`WARN: could not load config/my-listings.json: ${err.message}`);
-    return { owner_label: null, map: new Map() };
+  const raw = readFileSync(path, "utf8");
+  const parsed = JSON.parse(raw);
+
+  if (!Array.isArray(parsed.groups) || parsed.groups.length === 0) {
+    throw new Error(`config/my-listings.json: 'groups' must be a non-empty array`);
   }
+
+  const groups = parsed.groups.map((g, i) => {
+    if (!g.group_id || !GROUP_ID_RE.test(g.group_id)) {
+      throw new Error(`config/my-listings.json: groups[${i}].group_id must match ${GROUP_ID_RE} (got: ${JSON.stringify(g.group_id)})`);
+    }
+    if (!g.make || typeof g.make !== "string") {
+      throw new Error(`config/my-listings.json: groups[${i}] (${g.group_id}) missing 'make'`);
+    }
+    if (!Array.isArray(g.models) || g.models.length === 0) {
+      throw new Error(`config/my-listings.json: groups[${i}] (${g.group_id}) 'models' must be a non-empty array`);
+    }
+    const listingIdMap = new Map();
+    for (const item of g.listings || []) {
+      if (item.listing_id) {
+        listingIdMap.set(String(item.listing_id), item.label || String(item.listing_id));
+      }
+    }
+    return {
+      group_id: g.group_id,
+      label: g.label || g.group_id,
+      make: g.make,
+      models: g.models,
+      listings: g.listings || [],
+      listingIdMap,
+    };
+  });
+
+  // Unique group_ids
+  const seen = new Set();
+  for (const g of groups) {
+    if (seen.has(g.group_id)) throw new Error(`config/my-listings.json: duplicate group_id ${g.group_id}`);
+    seen.add(g.group_id);
+  }
+
+  console.error(`Loaded ${groups.length} group(s) from config: ${groups.map((g) => g.group_id).join(", ")}`);
+  return { owner_label: parsed.owner_label || null, groups };
 }
 
-function buildSearchUrl({ start_date_mdy, end_date_mdy }) {
+function buildSearchUrl({ start_date_mdy, end_date_mdy, make, models }) {
   const params = new URLSearchParams();
   params.set("country", LOCATION.country);
   params.set("defaultZoomLevel", "11");
@@ -74,8 +123,8 @@ function buildSearchUrl({ start_date_mdy, end_date_mdy }) {
   params.set("location", LOCATION.label);
   params.set("locationType", "CITY");
   params.set("longitude", String(LOCATION.longitude));
-  params.set("makes", MAKE);
-  for (const m of MODELS) params.append("models", m);
+  params.set("makes", make);
+  for (const m of models) params.append("models", m);
   params.set("pickupType", "ALL");
   params.set("placeId", LOCATION.placeId);
   params.set("region", LOCATION.region);
@@ -180,7 +229,7 @@ async function scrapeHost(page, listingUrl) {
   });
 }
 
-async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
+async function runWindow({ searchPage, hostPage, spec, today, group, ownerLabel }) {
   const start = addDays(today, spec.offset_days);
   const end = addDays(start, spec.days);
   const start_date = ymd(start);
@@ -188,8 +237,8 @@ async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
   const start_date_mdy = mdy(start);
   const end_date_mdy = mdy(end);
 
-  const url = buildSearchUrl({ start_date_mdy, end_date_mdy });
-  console.error(`[window=${spec.id}] ${LOCATION.label} ${start_date} -> ${end_date} (${spec.days}d) ${MAKE} / ${MODELS.join(", ")}`);
+  const url = buildSearchUrl({ start_date_mdy, end_date_mdy, make: group.make, models: group.models });
+  console.error(`[${group.group_id} window=${spec.id}] ${LOCATION.label} ${start_date} -> ${end_date} (${spec.days}d) ${group.make} / ${group.models.join(", ")}`);
   console.error(`  URL: ${url}`);
 
   const maxAttempts = 3;
@@ -225,16 +274,19 @@ async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
     console.error(`  giving up after ${maxAttempts} attempts. Debug:`, JSON.stringify(dbg));
   }
 
-  const tiguansAll = all.filter((l) => {
-    const make = l.make.toLowerCase();
-    const model = l.model.toLowerCase();
-    return make.includes(MAKE.toLowerCase()) && MODELS.some((m) => model.includes(m.toLowerCase().split(" ")[0]));
+  // Exact make+model match (lowercase). Tiguan ≠ Tiguan Limited ≠ X2 ≠ 2 Series.
+  const groupMakeLower = group.make.toLowerCase();
+  const groupModelsLower = group.models.map((m) => m.toLowerCase());
+  const matched = all.filter((l) => {
+    const make = (l.make || "").toLowerCase();
+    const model = (l.model || "").toLowerCase();
+    return make === groupMakeLower && groupModelsLower.includes(model);
   });
-  const tiguans = tiguansAll.filter((l) => ALLOWED_CITY_SLUGS.includes(l.city_slug));
-  const dropped = tiguansAll.length - tiguans.length;
-  console.error(`  confirmed ${tiguansAll.length} Tiguan(s); kept ${tiguans.length} in [${ALLOWED_CITY_SLUGS.join(", ")}], dropped ${dropped}`);
+  const inCity = matched.filter((l) => ALLOWED_CITY_SLUGS.includes(l.city_slug));
+  const dropped = matched.length - inCity.length;
+  console.error(`  confirmed ${matched.length} ${group.label}; kept ${inCity.length} in [${ALLOWED_CITY_SLUGS.join(", ")}], dropped ${dropped}`);
 
-  for (const t of tiguans) {
+  for (const t of inCity) {
     try {
       t.host_name = await scrapeHost(hostPage, t.listing_url);
     } catch (err) {
@@ -244,6 +296,8 @@ async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
 
   return {
     generated_at: new Date().toISOString(),
+    group_id: group.group_id,
+    group_label: group.label,
     window_id: spec.id,
     window_label: spec.label,
     query: {
@@ -251,17 +305,17 @@ async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
       start_date,
       end_date,
       days: spec.days,
-      make: MAKE,
-      models: MODELS,
+      make: group.make,
+      models: group.models,
       search_url: url,
     },
     total_listings_returned: all.length,
-    tiguans_before_city_filter: tiguansAll.length,
-    tiguan_count: tiguans.length,
+    listings_before_city_filter: matched.length,
+    listing_count: inCity.length,
     allowed_city_slugs: ALLOWED_CITY_SLUGS,
-    owner_label: myListings.owner_label,
-    tiguans: tiguans.map((t) => {
-      const isMine = myListings.map.has(t.id);
+    owner_label: ownerLabel,
+    listings: inCity.map((t) => {
+      const isMine = group.listingIdMap.has(t.id);
       return {
         listing_id: t.id,
         year: t.year,
@@ -270,7 +324,7 @@ async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
         city_slug: t.city_slug,
         host_name: t.host_name || null,
         is_mine: isMine,
-        mine_label: isMine ? myListings.map.get(t.id) : null,
+        mine_label: isMine ? group.listingIdMap.get(t.id) : null,
         total_charged_usd: t.total_charged,
         total_original_usd: t.total_original,
         avg_daily_usd: Number((t.total_charged / spec.days).toFixed(2)),
@@ -278,6 +332,26 @@ async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
       };
     }),
   };
+}
+
+async function runGroup({ searchPage, hostPage, group, windows, today, ownerLabel, outDir, runDate, writeFiles }) {
+  const groupResults = [];
+  for (const w of windows) {
+    const spec = WINDOW_SPECS[w];
+    const result = await runWindow({ searchPage, hostPage, spec, today, group, ownerLabel });
+    groupResults.push(result);
+
+    if (writeFiles) {
+      const outPath = join(outDir, `AUS-${group.group_id}-${runDate}-${spec.label}.json`);
+      writeFileSync(outPath, JSON.stringify(result, null, 2));
+      console.error(`  wrote ${outPath}`);
+    }
+  }
+  return groupResults;
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function main() {
@@ -298,7 +372,15 @@ async function main() {
   const writeFiles = process.env.NO_WRITE !== "1";
   if (writeFiles) mkdirSync(outDir, { recursive: true });
 
-  const myListings = loadMyListings();
+  const { owner_label: ownerLabel, groups: allGroups } = loadConfig();
+
+  const groupFilter = process.env.GROUP_ID || null;
+  const groups = groupFilter ? allGroups.filter((g) => g.group_id === groupFilter) : allGroups;
+  if (groupFilter && groups.length === 0) {
+    console.error(`GROUP_ID=${groupFilter} not found in config. Available: ${allGroups.map((g) => g.group_id).join(", ")}`);
+    process.exit(2);
+  }
+  console.error(`Running ${groups.length} group(s): ${groups.map((g) => g.group_id).join(", ")}`);
 
   const headless = process.env.HEADLESS === "1";
   const browser = await chromium.launch({ headless });
@@ -306,44 +388,51 @@ async function main() {
   const searchPage = await ctx.newPage();
   const hostPage = await ctx.newPage();
 
-  const results = [];
+  const perGroupResults = []; // { group_id, status, windows?, error? }
   try {
-    for (const w of windows) {
-      const spec = WINDOW_SPECS[w];
-      const result = await runWindow({ searchPage, hostPage, spec, today, myListings });
-      results.push(result);
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      console.error(`\n=== group ${i + 1}/${groups.length}: ${group.group_id} (${group.label}) ===`);
 
-      if (writeFiles) {
-        const outPath = join(outDir, `AUS-Tiguans-${runDate}-${spec.label}.json`);
-        writeFileSync(outPath, JSON.stringify(result, null, 2));
-        console.error(`  wrote ${outPath}`);
+      try {
+        const windowResults = await runGroup({
+          searchPage, hostPage, group, windows, today, ownerLabel, outDir, runDate, writeFiles,
+        });
+        perGroupResults.push({
+          group_id: group.group_id,
+          status: "ok",
+          windows: windowResults.map((r) => ({
+            window_id: r.window_id,
+            listing_count: r.listing_count,
+            start_date: r.query.start_date,
+            end_date: r.query.end_date,
+          })),
+        });
+      } catch (err) {
+        console.error(`!! group ${group.group_id} failed: ${err.message}`);
+        perGroupResults.push({ group_id: group.group_id, status: "failed", error: err.message });
+      }
+
+      // Inter-group politeness delay (3-8s randomized). Skip after the last group.
+      if (i < groups.length - 1) {
+        const delayMs = 3000 + Math.floor(Math.random() * 5000);
+        console.error(`  sleeping ${delayMs}ms before next group...`);
+        await sleep(delayMs);
       }
     }
   } finally {
     await browser.close();
   }
 
-  // Single-window invocations: also emit JSON on stdout for ad-hoc piping
-  if (windows.length === 1) {
-    process.stdout.write(JSON.stringify(results[0], null, 2) + "\n");
-  } else {
-    // Summary line for multi-window runs (file paths only; data is in the files)
-    process.stdout.write(
-      JSON.stringify(
-        {
-          run_date: runDate,
-          windows: results.map((r) => ({
-            window_id: r.window_id,
-            tiguan_count: r.tiguan_count,
-            start_date: r.query.start_date,
-            end_date: r.query.end_date,
-          })),
-        },
-        null,
-        2
-      ) + "\n"
-    );
-  }
+  // Summary on stdout
+  const summary = { run_date: runDate, groups: perGroupResults };
+  process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+
+  const okCount = perGroupResults.filter((r) => r.status === "ok").length;
+  console.error(`\nDone. ${okCount}/${perGroupResults.length} groups succeeded.`);
+  // Always exit 0 — the wrapper validates per-file post-hoc. A group-level
+  // failure here doesn't necessarily mean no usable data was written; the
+  // wrapper's listing_count check is the source of truth for "emailable".
 }
 
 main().catch((err) => {

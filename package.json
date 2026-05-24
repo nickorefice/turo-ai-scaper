@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "tiguans": "node src/tiguans.js"
+    "scrape": "node src/scrape.js",
+    "email": "node src/send-email.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

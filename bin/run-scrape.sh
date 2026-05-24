@@ -1,9 +1,16 @@
 #!/bin/bash
-# Daily scrape wrapper. Designed to be called from launchd or by hand.
-# Writes two files (window A: 3-day, window B: 4-day), then commits + pushes to GitHub.
+# Daily multi-group scrape wrapper. Designed to be called from launchd or by hand.
+# - Runs `node src/scrape.js` once (loops over all groups internally, shared browser).
+# - Writes one JSON file per (group, window) into data/.
+# - Validates each expected file exists and has listing_count >= 1.
+# - Sends one email per group via Resend (independent invocations — one group's
+#   email failure does not block the others).
+# - Optionally commits + pushes the day's data files to GitHub when AUTO_COMMIT=1.
+#
 # Defaults:
 #   AUTO_COMMIT=0    (override to 1 to enable commit/push; PAT must be installed)
 #   GH_TOKEN_FILE=~/.config/turo-scraper/gh-token
+#   SEND_EMAIL=1     (override to 0 to skip the per-group email loop)
 set -euo pipefail
 
 # Derive REPO from this script's location so future relocations don't
@@ -20,8 +27,7 @@ mkdir -p data logs
 
 DATE="$(date +%Y-%m-%d)"
 LOG="logs/run-${DATE}.log"
-OUT_A="data/AUS-Tiguans-${DATE}-window-a-3day.json"
-OUT_B="data/AUS-Tiguans-${DATE}-window-b-4day.json"
+CONFIG="config/my-listings.json"
 
 log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG" >&2; }
 
@@ -40,23 +46,56 @@ if [ -n "$DIRTY" ]; then
   exit 1
 fi
 
-log "starting scrape (window=all) -> $OUT_A, $OUT_B"
-WINDOW=all OUT_DIR=data "$NODE" src/tiguans.js 2>> "$LOG" > /dev/null
+# Discover groups from config (e.g., "tiguans taos corolla-hybrid civic 2-series").
+if ! GROUPS="$(jq -r '.groups[].group_id' "$CONFIG" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; then
+  log "ERROR: could not parse $CONFIG with jq"
+  exit 1
+fi
+if [ -z "$GROUPS" ]; then
+  log "ERROR: no groups found in $CONFIG"
+  exit 1
+fi
+log "discovered groups: $GROUPS"
+
+log "starting scrape across all groups"
+"$NODE" src/scrape.js 2>> "$LOG" > /dev/null
 log "scrape finished"
 
-# Sanity check: both files exist, non-zero counts.
-for f in "$OUT_A" "$OUT_B"; do
-  if [ ! -s "$f" ]; then
-    log "ERROR: missing or empty output file: $f"
-    exit 1
+# Validate per-(group, window) output files. Track which groups have full data.
+OK_GROUPS=()
+FAILED_GROUPS=()
+COMMIT_FILES=()
+for group in $GROUPS; do
+  group_ok=1
+  for win in "window-a-3day" "window-b-4day"; do
+    f="data/AUS-${group}-${DATE}-${win}.json"
+    if [ ! -s "$f" ]; then
+      log "  WARN: missing or empty: $f"
+      group_ok=0
+      continue
+    fi
+    COUNT="$(jq -r '.listing_count // 0' "$f" 2>/dev/null || echo 0)"
+    if [ "$COUNT" -lt 1 ]; then
+      log "  WARN: $f reports listing_count=$COUNT"
+      group_ok=0
+      continue
+    fi
+    log "  ok: $f (listing_count=$COUNT)"
+    COMMIT_FILES+=("$f")
+  done
+  if [ "$group_ok" = "1" ]; then
+    OK_GROUPS+=("$group")
+  else
+    FAILED_GROUPS+=("$group")
   fi
-  COUNT="$(jq -r '.tiguan_count // 0' "$f")"
-  if [ "$COUNT" -lt 1 ]; then
-    log "ERROR: $f reports tiguan_count=$COUNT — refusing to commit"
-    exit 1
-  fi
-  log "  $f: tiguan_count=$COUNT"
 done
+
+log "scrape summary: ok=[${OK_GROUPS[*]:-}] failed=[${FAILED_GROUPS[*]:-}]"
+
+if [ "${#OK_GROUPS[@]}" -eq 0 ]; then
+  log "ERROR: no groups produced valid output — refusing to commit/email"
+  exit 1
+fi
 
 if [ "$AUTO_COMMIT" = "1" ]; then
   if [ ! -r "$GH_TOKEN_FILE" ]; then
@@ -73,13 +112,14 @@ if [ "$AUTO_COMMIT" = "1" ]; then
     exit 1
   }
 
-  log "staging + committing $OUT_A, $OUT_B"
-  git add -- "$OUT_A" "$OUT_B"
+  OK_LIST="$(IFS=,; echo "${OK_GROUPS[*]}")"
+  log "staging + committing ${#COMMIT_FILES[@]} files for groups: ${OK_LIST}"
+  git add -- "${COMMIT_FILES[@]}"
   if git diff --cached --quiet; then
     log "nothing to commit (files already match HEAD)"
   else
     git -c user.name="turo-scraper" -c user.email="scraper@localhost" commit \
-      -m "data: AUS Tiguans ${DATE} (window-a 3day, window-b 4day)" \
+      -m "data: AUS daily ${DATE} (${OK_LIST})" \
       2>> "$LOG" > /dev/null
 
     PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
@@ -91,13 +131,24 @@ else
   log "AUTO_COMMIT=$AUTO_COMMIT, skipping git commit/push"
 fi
 
-# Send the daily pricing email via Resend (Claude generates the body).
-# Reads keys from ~/.config/turo-scraper/.env — see src/send-email.js header.
+# Per-group email sends. Each group is independent — one failure does not block others.
 SEND_EMAIL="${SEND_EMAIL:-1}"
 if [ "$SEND_EMAIL" = "1" ]; then
-  log "building + sending daily email"
-  "$NODE" src/send-email.js 2>> "$LOG"
-  log "email sent"
+  for group in "${OK_GROUPS[@]}"; do
+    log "sending email for group: $group"
+    if GROUP_ID="$group" "$NODE" src/send-email.js 2>> "$LOG"; then
+      log "  email sent for $group"
+    else
+      log "  ERROR: email failed for $group"
+    fi
+  done
+  # Send alert email per failed group (uses the [ALERT] codepath in send-email.js).
+  for group in "${FAILED_GROUPS[@]}"; do
+    log "sending [ALERT] for failed group: $group"
+    GROUP_ID="$group" "$NODE" src/send-email.js 2>> "$LOG" || log "  ERROR: alert send failed for $group"
+  done
 else
   log "SEND_EMAIL=$SEND_EMAIL, skipping email"
 fi
+
+log "wrapper complete"

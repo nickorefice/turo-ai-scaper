@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// Local daily-email pipeline: reads today's two window JSON files
-// and sends a deterministic stats + competitor summary via Resend.
+// Per-group daily email pipeline. Reads today's two window JSON files for ONE
+// group (driven by GROUP_ID env var) and sends a deterministic stats +
+// competitor summary via Resend.
 //
 // Credentials are read from ~/.config/turo-scraper/.env (KEY=value lines):
 //   RESEND_API_KEY=re_...
-//   EMAIL_TO=nickjoref@gmail.com           (optional, default shown)
-//   EMAIL_FROM=onboarding@resend.dev       (optional, default shown)
+//   EMAIL_TO=nickjoref@gmail.com,kennywilson212@gmail.com  (comma-separated for multiple)
+//   EMAIL_FROM=turo-daily@clearedapp.app
 //
 // Usage:
-//   node src/send-email.js                 # uses today's date in America/Chicago
-//   node src/send-email.js 2026-05-23      # explicit date override
+//   GROUP_ID=tiguans node src/send-email.js                 # today's date in America/Chicago
+//   GROUP_ID=tiguans node src/send-email.js 2026-05-23      # explicit date override
 //
 // Exits non-zero on any failure so the launchd wrapper sees it.
 
@@ -58,8 +59,8 @@ function median(nums) {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
-function computeStats(tiguans) {
-  const competitors = tiguans.filter((t) => !t.is_mine);
+function computeStats(listings) {
+  const competitors = listings.filter((t) => !t.is_mine);
   const dailies = competitors.map((t) => t.avg_daily_usd).filter((n) => typeof n === "number");
   if (dailies.length === 0) return { n: 0, median: null, min: null, max: null };
   return {
@@ -96,31 +97,31 @@ function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
-function getMyCarHeader(myListings, windows) {
+function getCarHeader(group, windows) {
   const seen = new Map(); // listing_id -> "{year} {model}"
   for (const w of windows) {
     if (!w) continue;
-    for (const t of w.tiguans) {
+    for (const t of w.listings) {
       if (t.is_mine && !seen.has(t.listing_id)) {
         seen.set(t.listing_id, `${t.year} ${t.model}`);
       }
     }
   }
-  return myListings.listings
+  return group.listings
     .map((l) => seen.get(l.listing_id) || l.label)
     .join(", ");
 }
 
-function buildMineLines(window, stats, windowLabel, myListings, myIds) {
+function buildMineLines(window, stats, windowLabel, group, myIds) {
   if (!window) return [`(no data for this window)`];
   const lines = [];
-  for (const listing of myListings.listings) {
-    const mine = window.tiguans.find((t) => t.listing_id === listing.listing_id);
+  for (const listing of group.listings) {
+    const mine = window.listings.find((t) => t.listing_id === listing.listing_id);
     if (!mine) {
       lines.push(`${listing.label}: not listed in ${windowLabel} — booked, paused, or removed.`);
       continue;
     }
-    const competitors = window.tiguans.filter((t) => !myIds.has(t.listing_id));
+    const competitors = window.listings.filter((t) => !myIds.has(t.listing_id));
     const cheaper = competitors.filter((c) => c.avg_daily_usd < mine.avg_daily_usd).length;
     const rank = cheaper + 1;
     const total = competitors.length + 1;
@@ -140,7 +141,7 @@ function buildMineLines(window, stats, windowLabel, myListings, myIds) {
 
 function competitorRows(window, myIds) {
   if (!window) return [];
-  return window.tiguans
+  return window.listings
     .filter((t) => !myIds.has(t.listing_id))
     .sort((a, b) => a.avg_daily_usd - b.avg_daily_usd)
     .map((t) => ({
@@ -151,9 +152,9 @@ function competitorRows(window, myIds) {
     }));
 }
 
-function buildTextBody({ windowA, windowB, statsA, statsB, myListings }) {
-  const myIds = new Set(myListings.listings.map((l) => l.listing_id));
-  const carHeader = getMyCarHeader(myListings, [windowA, windowB]);
+function buildTextBody({ windowA, windowB, statsA, statsB, group }) {
+  const myIds = new Set(group.listings.map((l) => l.listing_id));
+  const carHeader = getCarHeader(group, [windowA, windowB]);
 
   const windowSection = (window, stats, headerLabel, windowKey) => {
     if (!window) return [`${headerLabel}: NO DATA`];
@@ -161,7 +162,7 @@ function buildTextBody({ windowA, windowB, statsA, statsB, myListings }) {
     const lines = [
       `${headerLabel} (${dateRange}):`,
       `  Competitors n=${stats.n}, median $${stats.median}/day, range $${stats.min}–$${stats.max}`,
-      ...buildMineLines(window, stats, windowKey, myListings, myIds).map((l) => `  ${l}`),
+      ...buildMineLines(window, stats, windowKey, group, myIds).map((l) => `  ${l}`),
       ``,
       `  Competitors:`,
     ];
@@ -185,16 +186,16 @@ function buildTextBody({ windowA, windowB, statsA, statsB, myListings }) {
   ].join("\n");
 }
 
-function buildHtmlBody({ windowA, windowB, statsA, statsB, myListings }) {
-  const myIds = new Set(myListings.listings.map((l) => l.listing_id));
-  const carHeader = getMyCarHeader(myListings, [windowA, windowB]);
+function buildHtmlBody({ windowA, windowB, statsA, statsB, group }) {
+  const myIds = new Set(group.listings.map((l) => l.listing_id));
+  const carHeader = getCarHeader(group, [windowA, windowB]);
 
   const windowSection = (window, stats, headerLabel, windowKey) => {
     if (!window) {
       return `<h2 style="font-size:15px;margin:16px 0 6px">${escapeHtml(headerLabel)}</h2><p>NO DATA</p>`;
     }
     const dateRange = `${window.query.start_date} → ${window.query.end_date}, ${window.query.days} days`;
-    const mineLines = buildMineLines(window, stats, windowKey, myListings, myIds)
+    const mineLines = buildMineLines(window, stats, windowKey, group, myIds)
       .map((l) => `<div>${escapeHtml(l)}</div>`)
       .join("");
     const compRows = competitorRows(window, myIds)
@@ -231,6 +232,17 @@ function buildHtmlBody({ windowA, windowB, statsA, statsB, myListings }) {
 </body></html>`;
 }
 
+function loadGroup(groupId) {
+  const configFile = join(REPO_ROOT, "config", "my-listings.json");
+  const config = JSON.parse(readFileSync(configFile, "utf8"));
+  const group = (config.groups || []).find((g) => g.group_id === groupId);
+  if (!group) {
+    const available = (config.groups || []).map((g) => g.group_id).join(", ");
+    throw new Error(`group_id "${groupId}" not found in config/my-listings.json. Available: ${available}`);
+  }
+  return group;
+}
+
 async function main() {
   const env = loadEnvFile(ENV_PATH);
   const RESEND_API_KEY = process.env.RESEND_API_KEY || env.RESEND_API_KEY;
@@ -240,17 +252,19 @@ async function main() {
 
   if (!RESEND_API_KEY) throw new Error(`RESEND_API_KEY missing (set in env or ${ENV_PATH})`);
 
+  const groupId = process.env.GROUP_ID;
+  if (!groupId) throw new Error(`GROUP_ID env var is required (e.g. GROUP_ID=tiguans node src/send-email.js)`);
+
+  const group = loadGroup(groupId);
+
   const runDate = process.argv[2] || chicagoToday();
   const dataDir = join(REPO_ROOT, "data");
-  const fileA = join(dataDir, `AUS-Tiguans-${runDate}-window-a-3day.json`);
-  const fileB = join(dataDir, `AUS-Tiguans-${runDate}-window-b-4day.json`);
-  const configFile = join(REPO_ROOT, "config", "my-listings.json");
+  const fileA = join(dataDir, `AUS-${groupId}-${runDate}-window-a-3day.json`);
+  const fileB = join(dataDir, `AUS-${groupId}-${runDate}-window-b-4day.json`);
 
-  console.error(`Building email for ${runDate}`);
+  console.error(`Building email for group=${groupId} date=${runDate}`);
   console.error(`  window A: ${fileA}`);
   console.error(`  window B: ${fileB}`);
-
-  const myListings = JSON.parse(readFileSync(configFile, "utf8"));
 
   const missing = [];
   let windowA = null;
@@ -263,30 +277,29 @@ async function main() {
   if (missing.length > 0) {
     console.error(`Missing data files: ${missing.join(", ")}`);
     const alertBody =
-      `Today's Turo scrape data files were not found:\n\n` +
+      `Today's Turo scrape data files for group "${group.label}" were not found:\n\n` +
       missing.map((m) => `  ${m}`).join("\n") +
-      `\n\nThe local scraper may have failed. Check logs/run-${runDate}.log on the Mac.\n` +
+      `\n\nThe local scraper may have failed for this group. Check logs/run-${runDate}.log on the Mac.\n` +
       `Run \`launchctl print gui/$(id -u)/com.nickorefice.turo-tiguans\` for launchd status.`;
     await sendViaResend({
       apiKey: RESEND_API_KEY,
       from: EMAIL_FROM,
       to: EMAIL_TO,
-      subject: `[ALERT] Turo scrape missing for ${runDate}`,
+      subject: `[ALERT] Turo scrape missing for ${runDate} — ${group.label}`,
       text: alertBody,
     });
     console.error("Sent alert email.");
     return;
   }
 
-  const statsA = computeStats(windowA.tiguans);
-  const statsB = computeStats(windowB.tiguans);
+  const statsA = computeStats(windowA.listings);
+  const statsB = computeStats(windowB.listings);
   console.error(`  window A: ${statsA.n} competitors, median $${statsA.median}/day`);
   console.error(`  window B: ${statsB.n} competitors, median $${statsB.median}/day`);
 
-  const carHeader = getMyCarHeader(myListings, [windowA, windowB]);
-  const subject = `Turo Austin daily — ${runDate} (${carHeader})`;
-  const text = buildTextBody({ windowA, windowB, statsA, statsB, myListings });
-  const html = buildHtmlBody({ windowA, windowB, statsA, statsB, myListings });
+  const subject = `Turo Austin daily — ${runDate} — ${group.label}`;
+  const text = buildTextBody({ windowA, windowB, statsA, statsB, group });
+  const html = buildHtmlBody({ windowA, windowB, statsA, statsB, group });
 
   console.error(`Sending email to ${EMAIL_TO}...`);
   const sendResult = await sendViaResend({

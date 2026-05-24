@@ -1,7 +1,51 @@
 {
   "owner_label": "Favorite Rental LLC",
-  "listings": [
-    { "listing_id": "2189398", "label": "Tiguan A (2189398)" },
-    { "listing_id": "1695581", "label": "Tiguan B (1695581)" }
+  "groups": [
+    {
+      "group_id": "tiguans",
+      "label": "Tiguans",
+      "make": "Volkswagen",
+      "models": ["Tiguan", "Tiguan Limited"],
+      "listings": [
+        { "listing_id": "1695581", "label": "2022 Tiguan (1695581)" },
+        { "listing_id": "2189398", "label": "2023 Tiguan (2189398)" }
+      ]
+    },
+    {
+      "group_id": "taos",
+      "label": "Taos",
+      "make": "Volkswagen",
+      "models": ["Taos"],
+      "listings": [
+        { "listing_id": "1506470", "label": "2022 Taos (1506470)" }
+      ]
+    },
+    {
+      "group_id": "corolla-hybrid",
+      "label": "Corolla Hybrid",
+      "make": "Toyota",
+      "models": ["Corolla Hybrid"],
+      "listings": [
+        { "listing_id": "1461722", "label": "2022 Corolla Hybrid (1461722)" }
+      ]
+    },
+    {
+      "group_id": "civic",
+      "label": "Civic",
+      "make": "Honda",
+      "models": ["Civic"],
+      "listings": [
+        { "listing_id": "363134", "label": "2014 Civic (363134)" }
+      ]
+    },
+    {
+      "group_id": "2-series",
+      "label": "BMW 2 Series",
+      "make": "BMW",
+      "models": ["2 Series"],
+      "listings": [
+        { "listing_id": "3497325", "label": "2016 2 Series (3497325)" }
+      ]
+    }
   ]
 }
