@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 import { chromium } from "patchright";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dirname, "..");
 
 const LOCATION = {
   label: "Austin, TX",
@@ -9,10 +15,14 @@ const LOCATION = {
   region: "TX",
   country: "US",
 };
-const DAYS = 3;
 const MAKE = "Volkswagen";
 const MODELS = ["Tiguan", "Tiguan Limited"];
 const ALLOWED_CITY_SLUGS = ["austin-tx"];
+
+const WINDOW_SPECS = {
+  a: { id: "a", days: 3, offset_days: 1, label: "window-a-3day" }, // pickup today+1, return today+4
+  b: { id: "b", days: 4, offset_days: 4, label: "window-b-4day" }, // pickup today+4, return today+8
+};
 
 function ymd(d) {
   const yyyy = d.getFullYear();
@@ -28,9 +38,30 @@ function mdy(d) {
   return `${mm}/${dd}/${yyyy}`;
 }
 
+function addDays(d, n) {
+  const out = new Date(d);
+  out.setDate(out.getDate() + n);
+  return out;
+}
+
+function loadMyListings() {
+  const path = join(REPO_ROOT, "config", "my-listings.json");
+  try {
+    const raw = readFileSync(path, "utf8");
+    const parsed = JSON.parse(raw);
+    const map = new Map();
+    for (const item of parsed.listings || []) {
+      if (item.listing_id) map.set(String(item.listing_id), item.label || String(item.listing_id));
+    }
+    console.error(`Loaded ${map.size} owner listing(s) from config/my-listings.json`);
+    return { owner_label: parsed.owner_label || null, map };
+  } catch (err) {
+    console.error(`WARN: could not load config/my-listings.json: ${err.message}`);
+    return { owner_label: null, map: new Map() };
+  }
+}
+
 function buildSearchUrl({ start_date_mdy, end_date_mdy }) {
-  // Mirrors the URL Turo's frontend constructs after resolving the location.
-  // The `models` key is repeated once per model name.
   const params = new URLSearchParams();
   params.set("country", LOCATION.country);
   params.set("defaultZoomLevel", "11");
@@ -75,7 +106,6 @@ async function scrapeVisibleCards(page) {
         year = parseInt(altMatch[2], 10);
       }
 
-      // Price container has 1 span (no discount) or 2 spans (orig + discounted "$NNN total").
       const priceWrap = link.querySelector('[data-testid="vehicle-discount-and-price"]');
       const spans = priceWrap ? [...priceWrap.querySelectorAll("span")] : [];
       const dollars = spans
@@ -96,7 +126,6 @@ async function scrapeVisibleCards(page) {
       }
 
       const fullHref = href.startsWith("http") ? href : `https://turo.com${href}`;
-      // URL pattern: /us/en/{type}-rental/united-states/{city-slug}/{make}/{model}/{id}
       const cityMatch = href.match(/\/united-states\/([^/]+)\//);
       const city_slug = cityMatch ? cityMatch[1] : null;
       out.push({ id, make, model, year, total_original, total_charged, city_slug, listing_url: fullHref });
@@ -110,7 +139,6 @@ async function scrollAndCollect(page, { maxRounds = 60, idleRounds = 5, pause = 
   let idle = 0;
   let prevSize = 0;
 
-  // initial scrape before scrolling
   for (const c of await scrapeVisibleCards(page)) collected.set(c.id, c);
 
   for (let i = 0; i < maxRounds; i++) {
@@ -141,12 +169,10 @@ async function scrapeHost(page, listingUrl) {
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(800);
 
-  // Title pattern: "Volkswagen Tiguan 2024 rental in Austin, TX by Mikhail (Austin's Best Host) | Turo"
   const title = await page.title();
   const m = title.match(/\s+by\s+(.+?)\s*\|\s*Turo$/i);
   if (m) return m[1].trim();
 
-  // Fallback: scan body for "Hosted by <name>"
   return page.evaluate(() => {
     const body = document.body.innerText || "";
     const m = body.match(/Hosted by[\s\S]{0,80}?([A-Z][A-Za-z'’.\- ]{1,40}?)(?:\d|\n|All-Star)/);
@@ -154,119 +180,169 @@ async function scrapeHost(page, listingUrl) {
   });
 }
 
-function nextWeekendWindow(today = new Date()) {
-  const d = new Date(today);
-  d.setHours(0, 0, 0, 0);
-  const dow = d.getDay(); // 0=Sun ... 5=Fri ... 6=Sat
-  // next Friday >= today (today if today is Friday)
-  const daysUntilFri = (5 - dow + 7) % 7;
-  const friday = new Date(d);
-  friday.setDate(d.getDate() + daysUntilFri);
-  const monday = new Date(friday);
-  monday.setDate(friday.getDate() + 3);
-  return { start: friday, end: monday, days: 3 };
-}
-
-async function main() {
-  const today = new Date();
-  let start, end, days;
-  const mode = process.env.MODE || "next-weekend";
-  if (mode === "next-weekend") {
-    ({ start, end, days } = nextWeekendWindow(today));
-  } else {
-    start = today;
-    end = new Date(today);
-    end.setDate(end.getDate() + DAYS);
-    days = DAYS;
-  }
-
+async function runWindow({ searchPage, hostPage, spec, today, myListings }) {
+  const start = addDays(today, spec.offset_days);
+  const end = addDays(start, spec.days);
   const start_date = ymd(start);
   const end_date = ymd(end);
   const start_date_mdy = mdy(start);
   const end_date_mdy = mdy(end);
 
   const url = buildSearchUrl({ start_date_mdy, end_date_mdy });
-  console.error(`[mode=${mode}] ${LOCATION.label} ${start_date} -> ${end_date} (${days}d) ${MAKE} / ${MODELS.join(", ")}`);
-  console.error(`URL: ${url}`);
+  console.error(`[window=${spec.id}] ${LOCATION.label} ${start_date} -> ${end_date} (${spec.days}d) ${MAKE} / ${MODELS.join(", ")}`);
+  console.error(`  URL: ${url}`);
 
-  const headless = process.env.HEADLESS === "1";
-  const browser = await chromium.launch({ headless });
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = await ctx.newPage();
+  const maxAttempts = 3;
+  let all = [];
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await searchPage.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await searchPage.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+      const found = await searchPage
+        .waitForSelector('[data-testid="vehicle-card-link-box"]', { timeout: 30000 })
+        .catch(() => null);
+      console.error(`  attempt ${attempt}/${maxAttempts}: initial card wait ${found ? "ok" : "timeout"}`);
+      await searchPage.waitForTimeout(2000);
 
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
-    const found = await page
-      .waitForSelector('[data-testid="vehicle-card-link-box"]', { timeout: 30000 })
-      .catch(() => null);
-    console.error(`Initial card wait: ${found ? "ok" : "timeout"}`);
-    await page.waitForTimeout(2000);
-
-    const all = await scrollAndCollect(page);
-    console.error(`Collected ${all.length} unique cards from filtered search`);
-
-    if (all.length === 0) {
-      const dbg = await page.evaluate(() => ({
-        url: location.href,
-        title: document.title,
-        bodyTextStart: document.body.innerText.replace(/\s+/g, " ").slice(0, 400),
-      }));
-      console.error("Debug:", JSON.stringify(dbg, null, 2));
+      all = await scrollAndCollect(searchPage);
+      console.error(`  attempt ${attempt}: collected ${all.length} unique cards`);
+      if (all.length > 0) break;
+      lastErr = new Error("0 cards collected");
+    } catch (err) {
+      lastErr = err;
+      console.error(`  attempt ${attempt} failed: ${err.message}`);
     }
+    if (attempt < maxAttempts) await searchPage.waitForTimeout(3000);
+  }
 
-    // Server-side filter does the work, but keep a defensive client-side check
-    // in case Turo ever returns adjacent suggestions.
-    const tiguansAll = all.filter((l) => {
-      const make = l.make.toLowerCase();
-      const model = l.model.toLowerCase();
-      return make.includes(MAKE.toLowerCase()) && MODELS.some((m) => model.includes(m.toLowerCase().split(" ")[0]));
-    });
-    const tiguans = tiguansAll.filter((l) => ALLOWED_CITY_SLUGS.includes(l.city_slug));
-    const dropped = tiguansAll.length - tiguans.length;
-    console.error(`Confirmed ${tiguansAll.length} Tiguan(s); kept ${tiguans.length} in [${ALLOWED_CITY_SLUGS.join(", ")}], dropped ${dropped} from other cities`);
+  if (all.length === 0) {
+    const dbg = await searchPage.evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      bodyTextStart: document.body.innerText.replace(/\s+/g, " ").slice(0, 400),
+    }));
+    console.error(`  giving up after ${maxAttempts} attempts. Debug:`, JSON.stringify(dbg));
+  }
 
-    // Fetch host name from each Tiguan's detail page (sequential to avoid bot heat)
-    for (const t of tiguans) {
-      try {
-        t.host_name = await scrapeHost(page, t.listing_url);
-      } catch (err) {
-        t.host_name = null;
-      }
+  const tiguansAll = all.filter((l) => {
+    const make = l.make.toLowerCase();
+    const model = l.model.toLowerCase();
+    return make.includes(MAKE.toLowerCase()) && MODELS.some((m) => model.includes(m.toLowerCase().split(" ")[0]));
+  });
+  const tiguans = tiguansAll.filter((l) => ALLOWED_CITY_SLUGS.includes(l.city_slug));
+  const dropped = tiguansAll.length - tiguans.length;
+  console.error(`  confirmed ${tiguansAll.length} Tiguan(s); kept ${tiguans.length} in [${ALLOWED_CITY_SLUGS.join(", ")}], dropped ${dropped}`);
+
+  for (const t of tiguans) {
+    try {
+      t.host_name = await scrapeHost(hostPage, t.listing_url);
+    } catch (err) {
+      t.host_name = null;
     }
+  }
 
-    const output = {
-      generated_at: new Date().toISOString(),
-      mode,
-      query: {
-        location: LOCATION.label,
-        start_date,
-        end_date,
-        days,
-        make: MAKE,
-        models: MODELS,
-        search_url: url,
-      },
-      total_listings_returned: all.length,
-      tiguans_before_city_filter: tiguansAll.length,
-      tiguan_count: tiguans.length,
-      allowed_city_slugs: ALLOWED_CITY_SLUGS,
-      tiguans: tiguans.map((t) => ({
+  return {
+    generated_at: new Date().toISOString(),
+    window_id: spec.id,
+    window_label: spec.label,
+    query: {
+      location: LOCATION.label,
+      start_date,
+      end_date,
+      days: spec.days,
+      make: MAKE,
+      models: MODELS,
+      search_url: url,
+    },
+    total_listings_returned: all.length,
+    tiguans_before_city_filter: tiguansAll.length,
+    tiguan_count: tiguans.length,
+    allowed_city_slugs: ALLOWED_CITY_SLUGS,
+    owner_label: myListings.owner_label,
+    tiguans: tiguans.map((t) => {
+      const isMine = myListings.map.has(t.id);
+      return {
         listing_id: t.id,
         year: t.year,
         make: t.make,
         model: t.model,
         city_slug: t.city_slug,
         host_name: t.host_name || null,
+        is_mine: isMine,
+        mine_label: isMine ? myListings.map.get(t.id) : null,
         total_charged_usd: t.total_charged,
         total_original_usd: t.total_original,
-        avg_daily_usd: Number((t.total_charged / days).toFixed(2)),
+        avg_daily_usd: Number((t.total_charged / spec.days).toFixed(2)),
         listing_url: t.listing_url,
-      })),
-    };
-    console.log(JSON.stringify(output, null, 2));
+      };
+    }),
+  };
+}
+
+async function main() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const runDate = ymd(today);
+
+  const requested = (process.env.WINDOW || "all").toLowerCase();
+  const windows = requested === "all" ? ["a", "b"] : [requested];
+  for (const w of windows) {
+    if (!WINDOW_SPECS[w]) {
+      console.error(`Unknown WINDOW=${w}; must be one of: a, b, all`);
+      process.exit(2);
+    }
+  }
+
+  const outDir = process.env.OUT_DIR || join(REPO_ROOT, "data");
+  const writeFiles = process.env.NO_WRITE !== "1";
+  if (writeFiles) mkdirSync(outDir, { recursive: true });
+
+  const myListings = loadMyListings();
+
+  const headless = process.env.HEADLESS === "1";
+  const browser = await chromium.launch({ headless });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const searchPage = await ctx.newPage();
+  const hostPage = await ctx.newPage();
+
+  const results = [];
+  try {
+    for (const w of windows) {
+      const spec = WINDOW_SPECS[w];
+      const result = await runWindow({ searchPage, hostPage, spec, today, myListings });
+      results.push(result);
+
+      if (writeFiles) {
+        const outPath = join(outDir, `AUS-Tiguans-${runDate}-${spec.label}.json`);
+        writeFileSync(outPath, JSON.stringify(result, null, 2));
+        console.error(`  wrote ${outPath}`);
+      }
+    }
   } finally {
     await browser.close();
+  }
+
+  // Single-window invocations: also emit JSON on stdout for ad-hoc piping
+  if (windows.length === 1) {
+    process.stdout.write(JSON.stringify(results[0], null, 2) + "\n");
+  } else {
+    // Summary line for multi-window runs (file paths only; data is in the files)
+    process.stdout.write(
+      JSON.stringify(
+        {
+          run_date: runDate,
+          windows: results.map((r) => ({
+            window_id: r.window_id,
+            tiguan_count: r.tiguan_count,
+            start_date: r.query.start_date,
+            end_date: r.query.end_date,
+          })),
+        },
+        null,
+        2
+      ) + "\n"
+    );
   }
 }
 
