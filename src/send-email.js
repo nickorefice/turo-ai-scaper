@@ -162,6 +162,65 @@ Then plain-text body with:
 Keep it scannable. No greeting, no signoff. Output the subject on its own first line prefixed with "SUBJECT: ", then a blank line, then the body.`;
 }
 
+function buildStatsOnlyBody({ runDate, windowA, windowB, statsA, statsB, myListings, minDaily }) {
+  const myIds = new Set(myListings.listings.map((l) => l.listing_id));
+  const labelFor = new Map(myListings.listings.map((l) => [l.listing_id, l.label]));
+
+  const formatMine = (window, stats, windowLabel) => {
+    if (!window) return `  (no data for this window)`;
+    const lines = [];
+    for (const listing of myListings.listings) {
+      const mine = window.tiguans.find((t) => t.listing_id === listing.listing_id);
+      if (!mine) {
+        lines.push(`  ${listing.label}: not listed in ${windowLabel} — booked, paused, or removed.`);
+        continue;
+      }
+      const competitors = window.tiguans.filter((t) => !myIds.has(t.listing_id));
+      const sortedCompetitors = [...competitors].sort((a, b) => a.avg_daily_usd - b.avg_daily_usd);
+      const cheaper = sortedCompetitors.filter((c) => c.avg_daily_usd < mine.avg_daily_usd).length;
+      const rank = cheaper + 1;
+      const total = competitors.length + 1;
+      const vsMedian = stats.median != null ? mine.avg_daily_usd - stats.median : null;
+      const vsMedianStr =
+        vsMedian == null
+          ? ""
+          : vsMedian > 0
+            ? ` (+$${vsMedian.toFixed(2)} vs median)`
+            : vsMedian < 0
+              ? ` (-$${Math.abs(vsMedian).toFixed(2)} vs median)`
+              : ` (at median)`;
+      lines.push(
+        `  ${listing.label}: $${mine.avg_daily_usd}/day, rank ${rank}/${total}${vsMedianStr}`,
+      );
+    }
+    return lines.join("\n");
+  };
+
+  const formatStats = (label, w, stats) => {
+    if (!w) return `${label}: NO DATA`;
+    return (
+      `${label} (${w.query.start_date} → ${w.query.end_date}, ${w.query.days} days):\n` +
+      `  Competitors n=${stats.n}, median $${stats.median}/day, range $${stats.min}–$${stats.max}`
+    );
+  };
+
+  return [
+    `Turo Austin daily — ${runDate}`,
+    ``,
+    formatStats("Window A — 3-day immediate", windowA, statsA),
+    formatMine(windowA, statsA, "Window A"),
+    ``,
+    formatStats("Window B — 4-day next week", windowB, statsB),
+    formatMine(windowB, statsB, "Window B"),
+    ``,
+    `Floor: $${minDaily}/day. No LLM rationale in this build (set ANTHROPIC_API_KEY for smart suggestions).`,
+    ``,
+    `Raw data:`,
+    `  https://github.com/nickorefice/turo-ai-scaper/blob/main/data/AUS-Tiguans-${runDate}-window-a-3day.json`,
+    `  https://github.com/nickorefice/turo-ai-scaper/blob/main/data/AUS-Tiguans-${runDate}-window-b-4day.json`,
+  ].join("\n");
+}
+
 const SYSTEM_PROMPT = `You are a Turo pricing advisor for a Volkswagen Tiguan host in Austin, TX.
 
 Your job: read scraped competitor data plus the host's own listing prices and recommend a daily rental price for each of the host's listings, with a short rationale.
@@ -183,8 +242,8 @@ async function main() {
   const EMAIL_FROM = process.env.EMAIL_FROM || env.EMAIL_FROM || "onboarding@resend.dev";
   const MIN_DAILY = Number(process.env.MIN_DAILY_PRICE_USD || env.MIN_DAILY_PRICE_USD || 40);
 
-  if (!ANTHROPIC_API_KEY) throw new Error(`ANTHROPIC_API_KEY missing (set in env or ${ENV_PATH})`);
   if (!RESEND_API_KEY) throw new Error(`RESEND_API_KEY missing (set in env or ${ENV_PATH})`);
+  // ANTHROPIC_API_KEY is optional — without it, the script sends a stats-only email.
 
   const runDate = process.argv[2] || chicagoToday();
   const dataDir = join(REPO_ROOT, "data");
@@ -230,27 +289,33 @@ async function main() {
   console.error(`  window A: ${statsA.n} competitors, median $${statsA.median}/day`);
   console.error(`  window B: ${statsB.n} competitors, median $${statsB.median}/day`);
 
-  const userPrompt = buildPrompt({ runDate, windowA, windowB, statsA, statsB, myListings });
-
-  console.error(`Calling Anthropic (${ANTHROPIC_MODEL})...`);
-  const { text, usage } = await callClaude({
-    apiKey: ANTHROPIC_API_KEY,
-    payload: {
-      model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT.replace("(will be told via min_daily)", `($${MIN_DAILY}/day)`),
-      messages: [{ role: "user", content: userPrompt }],
-    },
-  });
-  console.error(`  used ${usage?.input_tokens} input + ${usage?.output_tokens} output tokens`);
-
-  // Parse "SUBJECT: ..." from the first line, body from the rest.
   let subject = `Turo Austin daily — ${runDate}`;
-  let body = text;
-  const subjectMatch = text.match(/^SUBJECT:\s*(.+?)\s*\n/);
-  if (subjectMatch) {
-    subject = subjectMatch[1].trim();
-    body = text.slice(subjectMatch[0].length).trimStart();
+  let body;
+
+  if (ANTHROPIC_API_KEY) {
+    // Smart path: Claude generates the email body with pricing rationale
+    const userPrompt = buildPrompt({ runDate, windowA, windowB, statsA, statsB, myListings });
+    console.error(`Calling Anthropic (${ANTHROPIC_MODEL})...`);
+    const { text, usage } = await callClaude({
+      apiKey: ANTHROPIC_API_KEY,
+      payload: {
+        model: ANTHROPIC_MODEL,
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT.replace("(will be told via min_daily)", `($${MIN_DAILY}/day)`),
+        messages: [{ role: "user", content: userPrompt }],
+      },
+    });
+    console.error(`  used ${usage?.input_tokens} input + ${usage?.output_tokens} output tokens`);
+    body = text;
+    const subjectMatch = text.match(/^SUBJECT:\s*(.+?)\s*\n/);
+    if (subjectMatch) {
+      subject = subjectMatch[1].trim();
+      body = text.slice(subjectMatch[0].length).trimStart();
+    }
+  } else {
+    // Stats-only path: deterministic email, no LLM (no Anthropic key set)
+    console.error(`No ANTHROPIC_API_KEY set — building stats-only email`);
+    body = buildStatsOnlyBody({ runDate, windowA, windowB, statsA, statsB, myListings, minDaily: MIN_DAILY });
   }
 
   console.error(`Sending email to ${EMAIL_TO}...`);
