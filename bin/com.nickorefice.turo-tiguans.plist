@@ -6,18 +6,18 @@
     <string>com.nickorefice.turo-tiguans</string>
 
     <!--
-      The applet wraps run-scrape.sh and is the TCC "responsible process".
-      Grant Full Disk Access to ScrapeRunner.app in System Settings once;
-      it will pass that grant to its bash + node + Chromium children.
-      Bash script alone cannot be granted FDA on macOS 14.4+ / Sequoia.
+      Repo lives in ~/code/ (not ~/Documents/) so TCC doesn't gate access.
+      launchd execs the script directly — no AppleScript-applet wrapper
+      needed in this location. (build-applet.sh remains in bin/ if you
+      ever move the repo back into a TCC-protected folder.)
     -->
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper/bin/ScrapeRunner.app/Contents/MacOS/applet</string>
+        <string>/Users/nickorefice/code/turo-ai-scaper/bin/run-scrape.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper</string>
+    <string>/Users/nickorefice/code/turo-ai-scaper</string>
 
     <!-- Fire once a day at 09:00 local time -->
     <key>StartCalendarInterval</key>
@@ -33,9 +33,9 @@
     <false/>
 
     <key>StandardOutPath</key>
-    <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper/logs/launchd.out.log</string>
+    <string>/Users/nickorefice/code/turo-ai-scaper/logs/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/nickorefice/Documents/GitHub/turo-ai-scaper/logs/launchd.err.log</string>
+    <string>/Users/nickorefice/code/turo-ai-scaper/logs/launchd.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

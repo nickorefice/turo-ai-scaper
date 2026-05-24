@@ -12,7 +12,7 @@
 # After running this, you MUST grant the applet Full Disk Access in
 # System Settings → Privacy & Security → Full Disk Access → "+".
 set -euo pipefail
-REPO="/Users/nickorefice/Documents/GitHub/turo-ai-scaper"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$REPO/bin/ScrapeRunner.app"
 SCRIPT="$REPO/bin/run-scrape.sh"
 LOG="/tmp/scrape-runner-stdout.log"

@@ -6,7 +6,9 @@
 #   GH_TOKEN_FILE=~/.config/turo-scraper/gh-token
 set -euo pipefail
 
-REPO="/Users/nickorefice/Documents/GitHub/turo-ai-scaper"
+# Derive REPO from this script's location so future relocations don't
+# need a code edit (just update the plist's absolute paths).
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 NODE="/opt/homebrew/bin/node"
 LOCK="/tmp/turo-scraper.lock"
 AUTO_COMMIT="${AUTO_COMMIT:-0}"
