@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T03:51:38.989Z",
+  "generated_at": "2026-05-24T04:27:49.800Z",
   "window_id": "a",
   "window_label": "window-a-3day",
   "query": {
@@ -32,9 +32,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 207,
-      "total_original_usd": 213,
+      "total_original_usd": 212,
       "avg_daily_usd": 69,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2766288?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=Sq8x6x1o&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2766288?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=crLuxYNR&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "1695581",
@@ -46,9 +46,9 @@
       "is_mine": true,
       "mine_label": "Tiguan B (1695581)",
       "total_charged_usd": 255,
-      "total_original_usd": 263,
+      "total_original_usd": 262,
       "avg_daily_usd": 85,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/1695581?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=Sq8x6x1o&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/1695581?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=crLuxYNR&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "3434155",
@@ -60,9 +60,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 267,
-      "total_original_usd": 275,
+      "total_original_usd": 274,
       "avg_daily_usd": 89,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3434155?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=Sq8x6x1o&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3434155?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=crLuxYNR&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "2010929",
@@ -74,9 +74,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 354,
-      "total_original_usd": 364,
+      "total_original_usd": 363,
       "avg_daily_usd": 118,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2010929?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=Sq8x6x1o&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2010929?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=crLuxYNR&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "2992347",
@@ -88,9 +88,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 212,
-      "total_original_usd": 219,
+      "total_original_usd": 218,
       "avg_daily_usd": 70.67,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2992347?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=Sq8x6x1o&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2992347?endDate=05%2F27%2F2026&endTime=10%3A00&searchId=crLuxYNR&searchRegion=TX&startDate=05%2F24%2F2026&startTime=10%3A00"
     }
   ]
 }
