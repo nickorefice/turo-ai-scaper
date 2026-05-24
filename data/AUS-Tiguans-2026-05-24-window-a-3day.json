@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T17:54:19.118Z",
+  "generated_at": "2026-05-24T18:03:39.898Z",
   "group_id": "tiguans",
   "group_label": "Tiguans",
   "window_id": "a",
@@ -34,9 +34,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 207,
-      "total_original_usd": 212,
+      "total_original_usd": 213,
       "avg_daily_usd": 69,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2766288?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=S3aRZHrD&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2766288?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=ua-o61it&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "3126850",
@@ -48,9 +48,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 224,
-      "total_original_usd": 234,
+      "total_original_usd": 235,
       "avg_daily_usd": 74.67,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3126850?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=S3aRZHrD&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3126850?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=ua-o61it&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "3386780",
@@ -62,9 +62,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 238,
-      "total_original_usd": 244,
+      "total_original_usd": 245,
       "avg_daily_usd": 79.33,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3386780?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=S3aRZHrD&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3386780?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=ua-o61it&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "1695581",
@@ -78,7 +78,7 @@
       "total_charged_usd": 241,
       "total_original_usd": 248,
       "avg_daily_usd": 80.33,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/1695581?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=S3aRZHrD&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/1695581?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=ua-o61it&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "2010929",
@@ -92,7 +92,7 @@
       "total_charged_usd": 323,
       "total_original_usd": 332,
       "avg_daily_usd": 107.67,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2010929?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=S3aRZHrD&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2010929?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=ua-o61it&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "2992347",
@@ -104,9 +104,9 @@
       "is_mine": false,
       "mine_label": null,
       "total_charged_usd": 207,
-      "total_original_usd": 212,
+      "total_original_usd": 213,
       "avg_daily_usd": 69,
-      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2992347?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=S3aRZHrD&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2992347?endDate=05%2F28%2F2026&endTime=10%3A00&searchId=ua-o61it&searchRegion=TX&startDate=05%2F25%2F2026&startTime=10%3A00"
     }
   ]
 }
