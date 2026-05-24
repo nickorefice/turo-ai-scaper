@@ -58,37 +58,46 @@ for f in "$OUT_A" "$OUT_B"; do
   log "  $f: tiguan_count=$COUNT"
 done
 
-if [ "$AUTO_COMMIT" != "1" ]; then
-  log "AUTO_COMMIT=$AUTO_COMMIT, skipping git commit/push (files left for manual review)"
-  exit 0
+if [ "$AUTO_COMMIT" = "1" ]; then
+  if [ ! -r "$GH_TOKEN_FILE" ]; then
+    log "ERROR: AUTO_COMMIT=1 but PAT file not readable: $GH_TOKEN_FILE"
+    exit 1
+  fi
+  GITHUB_TOKEN="$(cat "$GH_TOKEN_FILE")"
+
+  log "syncing with origin/main"
+  git fetch origin --quiet 2>> "$LOG"
+  git rebase --autostash origin/main 2>> "$LOG" || {
+    log "ERROR: rebase failed; aborting and resetting"
+    git rebase --abort 2>/dev/null || true
+    exit 1
+  }
+
+  log "staging + committing $OUT_A, $OUT_B"
+  git add -- "$OUT_A" "$OUT_B"
+  if git diff --cached --quiet; then
+    log "nothing to commit (files already match HEAD)"
+  else
+    git -c user.name="turo-scraper" -c user.email="scraper@localhost" commit \
+      -m "data: AUS Tiguans ${DATE} (window-a 3day, window-b 4day)" \
+      2>> "$LOG" > /dev/null
+
+    PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
+    log "pushing to ${GH_REPO}"
+    git push "$PUSH_URL" main 2>> "$LOG" > /dev/null
+    log "push complete"
+  fi
+else
+  log "AUTO_COMMIT=$AUTO_COMMIT, skipping git commit/push"
 fi
 
-if [ ! -r "$GH_TOKEN_FILE" ]; then
-  log "ERROR: AUTO_COMMIT=1 but PAT file not readable: $GH_TOKEN_FILE"
-  exit 1
+# Send the daily pricing email via Resend (Claude generates the body).
+# Reads keys from ~/.config/turo-scraper/.env — see src/send-email.js header.
+SEND_EMAIL="${SEND_EMAIL:-1}"
+if [ "$SEND_EMAIL" = "1" ]; then
+  log "building + sending daily email"
+  "$NODE" src/send-email.js 2>> "$LOG"
+  log "email sent"
+else
+  log "SEND_EMAIL=$SEND_EMAIL, skipping email"
 fi
-GITHUB_TOKEN="$(cat "$GH_TOKEN_FILE")"
-
-log "syncing with origin/main"
-git fetch origin --quiet 2>> "$LOG"
-git rebase --autostash origin/main 2>> "$LOG" || {
-  log "ERROR: rebase failed; aborting and resetting"
-  git rebase --abort 2>/dev/null || true
-  exit 1
-}
-
-log "staging + committing $OUT_A, $OUT_B"
-git add -- "$OUT_A" "$OUT_B"
-if git diff --cached --quiet; then
-  log "nothing to commit (files already match HEAD)"
-  exit 0
-fi
-
-git -c user.name="turo-scraper" -c user.email="scraper@localhost" commit \
-  -m "data: AUS Tiguans ${DATE} (window-a 3day, window-b 4day)" \
-  2>> "$LOG" > /dev/null
-
-PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
-log "pushing to ${GH_REPO}"
-git push "$PUSH_URL" main 2>> "$LOG" > /dev/null
-log "push complete"
