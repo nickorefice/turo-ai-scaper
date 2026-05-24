@@ -1,0 +1,9 @@
+node_modules/
+logs/
+probe.png
+tiguans.json
+.env
+.env.*
+.DS_Store
+*.log
+data/*.tmp.json

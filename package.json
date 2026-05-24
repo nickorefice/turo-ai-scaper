@@ -1,0 +1,13 @@
+{
+  "name": "turo-ai-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tiguans": "node src/tiguans.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@striderlabs/mcp-turo": "^1.0.0"
+  }
+}
