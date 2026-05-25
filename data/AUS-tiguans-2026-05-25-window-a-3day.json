@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-05-25T14:36:38.225Z",
+  "group_id": "tiguans",
+  "group_label": "Tiguans",
+  "window_id": "a",
+  "window_label": "window-a-3day",
+  "query": {
+    "location": "Austin, TX",
+    "start_date": "2026-05-26",
+    "end_date": "2026-05-29",
+    "days": 3,
+    "make": "Volkswagen",
+    "models": [
+      "Tiguan",
+      "Tiguan Limited"
+    ],
+    "search_url": "https://turo.com/us/en/search?country=US&defaultZoomLevel=11&endDate=05%2F29%2F2026&endTime=10%3A00&flexibleType=NOT_FLEXIBLE&isMapSearch=false&itemsPerPage=200&latitude=30.267153&location=Austin%2C+TX&locationType=CITY&longitude=-97.7430608&makes=Volkswagen&models=Tiguan&models=Tiguan+Limited&pickupType=ALL&placeId=ChIJLwPMoJm1RIYRetVp1EtGm10&region=TX&searchDurationType=DAILY&sortType=RELEVANCE&startDate=05%2F26%2F2026&startTime=10%3A00"
+  },
+  "total_listings_returned": 8,
+  "listings_before_city_filter": 8,
+  "listing_count": 7,
+  "allowed_city_slugs": [
+    "austin-tx"
+  ],
+  "owner_label": "Favorite Rental LLC",
+  "listings": [
+    {
+      "listing_id": "3126850",
+      "year": 2024,
+      "make": "Volkswagen",
+      "model": "Tiguan",
+      "city_slug": "austin-tx",
+      "host_name": "Metromiles",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 203,
+      "total_original_usd": 213,
+      "avg_daily_usd": 67.67,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3126850?endDate=05%2F29%2F2026&endTime=10%3A00&searchId=aAE6QbQY&searchRegion=TX&startDate=05%2F26%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "2189398",
+      "year": 2023,
+      "make": "Volkswagen",
+      "model": "Tiguan",
+      "city_slug": "austin-tx",
+      "host_name": "Favorite Rental LLC",
+      "is_mine": true,
+      "mine_label": "2023 Tiguan (2189398)",
+      "total_charged_usd": 211,
+      "total_original_usd": 217,
+      "avg_daily_usd": 70.33,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2189398?endDate=05%2F29%2F2026&endTime=10%3A00&searchId=aAE6QbQY&searchRegion=TX&startDate=05%2F26%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3386780",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Tiguan",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 240,
+      "total_original_usd": 247,
+      "avg_daily_usd": 80,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3386780?endDate=05%2F29%2F2026&endTime=10%3A00&searchId=aAE6QbQY&searchRegion=TX&startDate=05%2F26%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3067641",
+      "year": 2024,
+      "make": "Volkswagen",
+      "model": "Tiguan",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 211,
+      "total_original_usd": 217,
+      "avg_daily_usd": 70.33,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/3067641?endDate=05%2F29%2F2026&endTime=10%3A00&searchId=aAE6QbQY&searchRegion=TX&startDate=05%2F26%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "2010929",
+      "year": 2022,
+      "make": "Volkswagen",
+      "model": "Tiguan",
+      "city_slug": "austin-tx",
+      "host_name": "David",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 294,
+      "total_original_usd": 303,
+      "avg_daily_usd": 98,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2010929?endDate=05%2F29%2F2026&endTime=10%3A00&searchId=aAE6QbQY&searchRegion=TX&startDate=05%2F26%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "2766288",
+      "year": 2024,
+      "make": "Volkswagen",
+      "model": "Tiguan",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 201,
+      "total_original_usd": 207,
+      "avg_daily_usd": 67,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2766288?endDate=05%2F29%2F2026&endTime=10%3A00&searchId=aAE6QbQY&searchRegion=TX&startDate=05%2F26%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "2992347",
+      "year": 2024,
+      "make": "Volkswagen",
+      "model": "Tiguan",
+      "city_slug": "austin-tx",
+      "host_name": null,
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 206,
+      "total_original_usd": 212,
+      "avg_daily_usd": 68.67,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/tiguan/2992347?endDate=05%2F29%2F2026&endTime=10%3A00&searchId=aAE6QbQY&searchRegion=TX&startDate=05%2F26%2F2026&startTime=10%3A00"
+    }
+  ]
+}
