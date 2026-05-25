@@ -1,26 +1,29 @@
 #!/usr/bin/env node
-// Multi-group Turo competitor scraper.
+// Multi-group Turo competitor scraper with persistent host-name cache.
 //
 // Reads config/my-listings.json (groups[] schema). For each group, runs a Turo
-// search for that make + models in Austin across two date windows (A: 3-day
-// immediate, B: 4-day next week), then visits each result's listing page to
-// capture the host name. Writes one JSON file per (group, window) into data/.
+// search for that make + models in Austin across 8 date windows (4 weekdays
+// Mon–Thu + 4 weekend Fri–Mon blocks, anchored to the next Monday strictly
+// after today). For each result, looks up the host name from data/host-cache.json
+// first; only visits the listing's detail page when the cache is cold or stale
+// (>30 days old). Writes one JSON file per (group, window) into data/.
 //
 // Env vars:
 //   GROUP_ID    — restrict to a single group (e.g. "tiguans", "taos"). Default: all groups.
-//   WINDOW      — "a", "b", or "all" (default "all").
+//   WINDOW      — "all" (default), a single window id (e.g. "w1-weekdays"), or
+//                 a comma-separated list (e.g. "w1-weekdays,w1-weekend").
 //   OUT_DIR     — output directory (default: data/ at repo root).
 //   NO_WRITE=1  — skip file writes (still prints JSON summary to stdout).
 //   HEADLESS=1  — run Chromium headless (default: visible window for bot-detection avoidance).
 //
-// Output filename: AUS-{group_id}-YYYY-MM-DD-window-{a|b}-{N}day.json
+// Output filename: AUS-{group_id}-YYYY-MM-DD-{window_label}.json
+// Window labels: wk{1..4}-weekdays-4day, wk{1..4}-weekend-3day.
 //
 // Multi-group runs share one browser/context for politeness and bot-detection
-// coherence. Each group has its own 5-min timeout — one hung group does not
-// block the others. Inter-group delay: 3-8s randomized.
+// coherence. Inter-group delay: 3-8s randomized.
 
 import { chromium } from "patchright";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,12 +40,9 @@ const LOCATION = {
 };
 const ALLOWED_CITY_SLUGS = ["austin-tx"];
 
-const WINDOW_SPECS = {
-  a: { id: "a", days: 3, offset_days: 1, label: "window-a-3day" }, // pickup today+1, return today+4
-  b: { id: "b", days: 4, offset_days: 4, label: "window-b-4day" }, // pickup today+4, return today+8
-};
-
 const GROUP_ID_RE = /^[a-z0-9-]+$/;
+const HOST_CACHE_PATH = join(REPO_ROOT, "data", "host-cache.json");
+const HOST_CACHE_REFRESH_DAYS = 30;
 
 function ymd(d) {
   const yyyy = d.getFullYear();
@@ -63,6 +63,100 @@ function addDays(d, n) {
   out.setDate(out.getDate() + n);
   return out;
 }
+
+// Generate 8 windows from today: 4 weekday (Mon–Thu, 4 nights) + 4 weekend
+// (Fri–Mon, 3 nights) blocks, anchored to the next Monday STRICTLY AFTER today.
+// If today is Mon, mon1 = today+7 (skip current partial week).
+// Returns array of specs in canonical render order (w1-weekdays, w1-weekend,
+// w2-weekdays, w2-weekend, ...).
+function generateWindowSpecs(today) {
+  const dow = today.getDay(); // 0=Sun..6=Sat
+  const daysToNextMon = ((1 - dow + 7) % 7) || 7;
+  const mon1 = addDays(today, daysToNextMon);
+  const specs = [];
+  for (let w = 1; w <= 4; w++) {
+    const weekOffset = (w - 1) * 7;
+    // Weekdays: pickup Mon, return Fri. 4 nights.
+    specs.push({
+      id: `w${w}-weekdays`,
+      label: `wk${w}-weekdays-4day`,
+      days: 4,
+      start: addDays(mon1, weekOffset),
+    });
+    // Weekend: pickup Fri, return Mon. 3 nights.
+    specs.push({
+      id: `w${w}-weekend`,
+      label: `wk${w}-weekend-3day`,
+      days: 3,
+      start: addDays(mon1, weekOffset + 4),
+    });
+  }
+  return specs;
+}
+
+// ---------------------------------------------------------------------------
+// Persistent host-name cache (data/host-cache.json).
+// ---------------------------------------------------------------------------
+
+function loadHostCache() {
+  if (!existsSync(HOST_CACHE_PATH)) {
+    console.error(`Host cache cold (no file at ${HOST_CACHE_PATH})`);
+    return { version: 1, updated_at: null, hosts: {} };
+  }
+  try {
+    const raw = readFileSync(HOST_CACHE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const count = Object.keys(parsed.hosts || {}).length;
+    console.error(`Host cache loaded: ${count} entries (updated ${parsed.updated_at})`);
+    return { version: 1, updated_at: parsed.updated_at || null, hosts: parsed.hosts || {} };
+  } catch (err) {
+    console.error(`Host cache unreadable (${err.message}) — starting fresh`);
+    return { version: 1, updated_at: null, hosts: {} };
+  }
+}
+
+function saveHostCache(cache) {
+  cache.updated_at = new Date().toISOString();
+  const tmp = HOST_CACHE_PATH + ".tmp";
+  writeFileSync(tmp, JSON.stringify(cache, null, 2));
+  renameSync(tmp, HOST_CACHE_PATH);
+}
+
+function isCacheEntryFresh(entry, runDate) {
+  if (!entry || !entry.last_verified) return false;
+  const lastMs = new Date(entry.last_verified + "T00:00:00Z").getTime();
+  const nowMs = new Date(runDate + "T00:00:00Z").getTime();
+  const ageDays = (nowMs - lastMs) / (1000 * 60 * 60 * 24);
+  return ageDays < HOST_CACHE_REFRESH_DAYS;
+}
+
+// Returns the host name for a listing, using cache when fresh; otherwise
+// drills into the detail page and updates the cache. Returns null on failure
+// (and does NOT cache null, so subsequent runs retry).
+async function getHost(page, listingId, listingUrl, cache, runDate) {
+  const existing = cache.hosts[listingId];
+  if (existing && isCacheEntryFresh(existing, runDate)) {
+    return existing.host_name;
+  }
+  let hostName = null;
+  try {
+    hostName = await scrapeHost(page, listingUrl);
+  } catch (err) {
+    console.error(`    host lookup failed for ${listingId}: ${err.message}`);
+  }
+  if (hostName) {
+    cache.hosts[listingId] = {
+      host_name: hostName,
+      last_verified: runDate,
+      first_seen: existing?.first_seen || runDate,
+    };
+  }
+  return hostName;
+}
+
+// ---------------------------------------------------------------------------
+// Config + URL building
+// ---------------------------------------------------------------------------
 
 function loadConfig() {
   const path = join(REPO_ROOT, "config", "my-listings.json");
@@ -134,6 +228,10 @@ function buildSearchUrl({ start_date_mdy, end_date_mdy, make, models }) {
   params.set("startTime", "10:00");
   return `https://turo.com/us/en/search?${params.toString()}`;
 }
+
+// ---------------------------------------------------------------------------
+// Card + host scraping
+// ---------------------------------------------------------------------------
 
 async function scrapeVisibleCards(page) {
   return page.evaluate(() => {
@@ -229,8 +327,12 @@ async function scrapeHost(page, listingUrl) {
   });
 }
 
-async function runWindow({ searchPage, hostPage, spec, today, group, ownerLabel }) {
-  const start = addDays(today, spec.offset_days);
+// ---------------------------------------------------------------------------
+// Window + group execution
+// ---------------------------------------------------------------------------
+
+async function runWindow({ searchPage, hostPage, spec, group, ownerLabel, cache, runDate }) {
+  const start = spec.start;
   const end = addDays(start, spec.days);
   const start_date = ymd(start);
   const end_date = ymd(end);
@@ -238,7 +340,7 @@ async function runWindow({ searchPage, hostPage, spec, today, group, ownerLabel 
   const end_date_mdy = mdy(end);
 
   const url = buildSearchUrl({ start_date_mdy, end_date_mdy, make: group.make, models: group.models });
-  console.error(`[${group.group_id} window=${spec.id}] ${LOCATION.label} ${start_date} -> ${end_date} (${spec.days}d) ${group.make} / ${group.models.join(", ")}`);
+  console.error(`[${group.group_id} ${spec.id}] ${LOCATION.label} ${start_date} -> ${end_date} (${spec.days}d) ${group.make} / ${group.models.join(", ")}`);
   console.error(`  URL: ${url}`);
 
   const maxAttempts = 3;
@@ -286,13 +388,15 @@ async function runWindow({ searchPage, hostPage, spec, today, group, ownerLabel 
   const dropped = matched.length - inCity.length;
   console.error(`  confirmed ${matched.length} ${group.label}; kept ${inCity.length} in [${ALLOWED_CITY_SLUGS.join(", ")}], dropped ${dropped}`);
 
+  // Host name resolution via cache (cache hits skip the detail page visit entirely).
+  let cacheHits = 0;
+  let cacheMisses = 0;
   for (const t of inCity) {
-    try {
-      t.host_name = await scrapeHost(hostPage, t.listing_url);
-    } catch (err) {
-      t.host_name = null;
-    }
+    const wasCached = cache.hosts[t.id] && isCacheEntryFresh(cache.hosts[t.id], runDate);
+    t.host_name = await getHost(hostPage, t.id, t.listing_url, cache, runDate);
+    if (wasCached) cacheHits++; else cacheMisses++;
   }
+  console.error(`  host cache: ${cacheHits} hits, ${cacheMisses} misses (detail-page visits)`);
 
   return {
     generated_at: new Date().toISOString(),
@@ -334,11 +438,10 @@ async function runWindow({ searchPage, hostPage, spec, today, group, ownerLabel 
   };
 }
 
-async function runGroup({ searchPage, hostPage, group, windows, today, ownerLabel, outDir, runDate, writeFiles }) {
+async function runGroup({ searchPage, hostPage, group, windows, ownerLabel, outDir, runDate, writeFiles, cache }) {
   const groupResults = [];
-  for (const w of windows) {
-    const spec = WINDOW_SPECS[w];
-    const result = await runWindow({ searchPage, hostPage, spec, today, group, ownerLabel });
+  for (const spec of windows) {
+    const result = await runWindow({ searchPage, hostPage, spec, group, ownerLabel, cache, runDate });
     groupResults.push(result);
 
     if (writeFiles) {
@@ -354,19 +457,34 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
+
 async function main() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const runDate = ymd(today);
 
+  const allSpecs = generateWindowSpecs(today);
+  const specsById = Object.fromEntries(allSpecs.map((s) => [s.id, s]));
+
   const requested = (process.env.WINDOW || "all").toLowerCase();
-  const windows = requested === "all" ? ["a", "b"] : [requested];
-  for (const w of windows) {
-    if (!WINDOW_SPECS[w]) {
-      console.error(`Unknown WINDOW=${w}; must be one of: a, b, all`);
-      process.exit(2);
+  let windows;
+  if (requested === "all") {
+    windows = allSpecs;
+  } else {
+    const ids = requested.split(",").map((s) => s.trim()).filter(Boolean);
+    windows = [];
+    for (const id of ids) {
+      if (!specsById[id]) {
+        console.error(`Unknown WINDOW=${id}; valid ids: ${allSpecs.map((s) => s.id).join(", ")}, or "all"`);
+        process.exit(2);
+      }
+      windows.push(specsById[id]);
     }
   }
+  console.error(`Running ${windows.length} window(s): ${windows.map((w) => w.id).join(", ")}`);
 
   const outDir = process.env.OUT_DIR || join(REPO_ROOT, "data");
   const writeFiles = process.env.NO_WRITE !== "1";
@@ -382,6 +500,9 @@ async function main() {
   }
   console.error(`Running ${groups.length} group(s): ${groups.map((g) => g.group_id).join(", ")}`);
 
+  const cache = loadHostCache();
+  const cacheSizeAtStart = Object.keys(cache.hosts).length;
+
   const headless = process.env.HEADLESS === "1";
   const browser = await chromium.launch({ headless });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -396,7 +517,7 @@ async function main() {
 
       try {
         const windowResults = await runGroup({
-          searchPage, hostPage, group, windows, today, ownerLabel, outDir, runDate, writeFiles,
+          searchPage, hostPage, group, windows, ownerLabel, outDir, runDate, writeFiles, cache,
         });
         perGroupResults.push({
           group_id: group.group_id,
@@ -413,6 +534,15 @@ async function main() {
         perGroupResults.push({ group_id: group.group_id, status: "failed", error: err.message });
       }
 
+      // Persist cache after each group so a later hang doesn't lose discoveries.
+      if (writeFiles) {
+        try {
+          saveHostCache(cache);
+        } catch (err) {
+          console.error(`  WARN: failed to persist host cache: ${err.message}`);
+        }
+      }
+
       // Inter-group politeness delay (3-8s randomized). Skip after the last group.
       if (i < groups.length - 1) {
         const delayMs = 3000 + Math.floor(Math.random() * 5000);
@@ -424,12 +554,28 @@ async function main() {
     await browser.close();
   }
 
+  // Final cache save (idempotent if last incremental save succeeded).
+  if (writeFiles) {
+    try {
+      saveHostCache(cache);
+    } catch (err) {
+      console.error(`WARN: failed final host cache save: ${err.message}`);
+    }
+  }
+
+  const cacheSizeAtEnd = Object.keys(cache.hosts).length;
+  const newHosts = cacheSizeAtEnd - cacheSizeAtStart;
+
   // Summary on stdout
-  const summary = { run_date: runDate, groups: perGroupResults };
+  const summary = {
+    run_date: runDate,
+    host_cache: { entries_at_start: cacheSizeAtStart, entries_at_end: cacheSizeAtEnd, new_this_run: newHosts },
+    groups: perGroupResults,
+  };
   process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
 
   const okCount = perGroupResults.filter((r) => r.status === "ok").length;
-  console.error(`\nDone. ${okCount}/${perGroupResults.length} groups succeeded.`);
+  console.error(`\nDone. ${okCount}/${perGroupResults.length} groups succeeded. Host cache: ${cacheSizeAtEnd} entries (+${newHosts} new).`);
   // Always exit 0 — the wrapper validates per-file post-hoc. A group-level
   // failure here doesn't necessarily mean no usable data was written; the
   // wrapper's listing_count check is the source of truth for "emailable".

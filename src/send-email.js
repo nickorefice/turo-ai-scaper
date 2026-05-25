@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-// Per-group daily email pipeline. Reads today's two window JSON files for ONE
-// group (driven by GROUP_ID env var) and sends a deterministic stats +
-// competitor summary via Resend.
+// Per-group daily email pipeline. Reads today's window JSON files for ONE
+// group (driven by GROUP_ID env var) and sends a hybrid summary+detail email
+// via Resend.
+//
+// Layout:
+//   - Header: car header (e.g. "2022 Tiguan, 2023 Tiguan")
+//   - Summary table: one row per window (date range | your prices | median | n | range)
+//   - Per-window detail sections: mine + top 3 cheapest + top 3 most expensive
+//   - Raw search links: one per window
 //
 // Credentials are read from ~/.config/turo-scraper/.env (KEY=value lines):
 //   RESEND_API_KEY=re_...
@@ -10,11 +16,11 @@
 //
 // Usage:
 //   GROUP_ID=tiguans node src/send-email.js                 # today's date in America/Chicago
-//   GROUP_ID=tiguans node src/send-email.js 2026-05-23      # explicit date override
+//   GROUP_ID=tiguans node src/send-email.js 2026-05-25      # explicit date override
 //
 // Exits non-zero on any failure so the launchd wrapper sees it.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -23,6 +29,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 
 const ENV_PATH = join(homedir(), ".config", "turo-scraper", ".env");
+
+// Canonical order for the 8 windows (used to sort discovered files).
+const CANONICAL_WINDOW_ORDER = [
+  "w1-weekdays", "w1-weekend",
+  "w2-weekdays", "w2-weekend",
+  "w3-weekdays", "w3-weekend",
+  "w4-weekdays", "w4-weekend",
+];
+
+const WINDOW_DISPLAY_LABEL = {
+  "w1-weekdays": "Wk 1 weekdays",
+  "w1-weekend":  "Wk 1 weekend",
+  "w2-weekdays": "Wk 2 weekdays",
+  "w2-weekend":  "Wk 2 weekend",
+  "w3-weekdays": "Wk 3 weekdays",
+  "w3-weekend":  "Wk 3 weekend",
+  "w4-weekdays": "Wk 4 weekdays",
+  "w4-weekend":  "Wk 4 weekend",
+};
 
 function loadEnvFile(path) {
   const env = {};
@@ -97,6 +122,23 @@ function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
+function shortListingLabel(label) {
+  // "2022 Tiguan (1695581)" -> "2022 Tiguan"
+  return label.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+function shortDay(dateStr) {
+  // "2026-06-01" -> "Mon 6/1"
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const dayName = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dt.getDay()];
+  return `${dayName} ${m}/${d}`;
+}
+
+function formatDateRange(window) {
+  return `${shortDay(window.query.start_date)} – ${shortDay(window.query.end_date)} (${window.query.days}n)`;
+}
+
 function getCarHeader(group, windows) {
   const seen = new Map(); // listing_id -> "{year} {model}"
   for (const w of windows) {
@@ -108,35 +150,22 @@ function getCarHeader(group, windows) {
     }
   }
   return group.listings
-    .map((l) => seen.get(l.listing_id) || l.label)
+    .map((l) => seen.get(l.listing_id) || shortListingLabel(l.label))
     .join(", ");
 }
 
-function buildMineLines(window, stats, windowLabel, group, myIds) {
-  if (!window) return [`(no data for this window)`];
-  const lines = [];
-  for (const listing of group.listings) {
-    const mine = window.listings.find((t) => t.listing_id === listing.listing_id);
-    if (!mine) {
-      lines.push(`${listing.label}: not listed in ${windowLabel} — booked, paused, or removed.`);
-      continue;
-    }
-    const competitors = window.listings.filter((t) => !myIds.has(t.listing_id));
-    const cheaper = competitors.filter((c) => c.avg_daily_usd < mine.avg_daily_usd).length;
-    const rank = cheaper + 1;
-    const total = competitors.length + 1;
-    const vsMedian = stats.median != null ? mine.avg_daily_usd - stats.median : null;
-    const vsMedianStr =
-      vsMedian == null
-        ? ""
-        : vsMedian > 0
-          ? ` (+$${vsMedian.toFixed(2)} vs median)`
-          : vsMedian < 0
-            ? ` (-$${Math.abs(vsMedian).toFixed(2)} vs median)`
-            : ` (at median)`;
-    lines.push(`${listing.label}: $${mine.avg_daily_usd}/day, rank ${rank}/${total}${vsMedianStr}`);
-  }
-  return lines;
+// Returns the price + rank info for one of my listings in one window,
+// or null if not listed in that window.
+function getMyEntry(window, listing, myIds) {
+  const mine = window.listings.find((t) => t.listing_id === listing.listing_id);
+  if (!mine) return null;
+  const competitors = window.listings.filter((t) => !myIds.has(t.listing_id));
+  const cheaper = competitors.filter((c) => c.avg_daily_usd < mine.avg_daily_usd).length;
+  return {
+    daily: mine.avg_daily_usd,
+    rank: cheaper + 1,
+    total: competitors.length + 1,
+  };
 }
 
 function competitorRows(window, myIds) {
@@ -152,85 +181,316 @@ function competitorRows(window, myIds) {
     }));
 }
 
-function buildTextBody({ windowA, windowB, statsA, statsB, group }) {
-  const myIds = new Set(group.listings.map((l) => l.listing_id));
-  const carHeader = getCarHeader(group, [windowA, windowB]);
+// Split competitors into "cheapest 3" + "most expensive 3" without overlap
+// when there are >= 6, or just show all sorted when fewer.
+function competitorEdges(rows, n = 3) {
+  if (rows.length <= n * 2) return { all: rows, cheapest: null, expensive: null };
+  return { all: null, cheapest: rows.slice(0, n), expensive: rows.slice(-n).reverse() };
+}
 
-  const windowSection = (window, stats, headerLabel, windowKey) => {
-    if (!window) return [`${headerLabel}: NO DATA`];
-    const dateRange = `${window.query.start_date} → ${window.query.end_date}, ${window.query.days} days`;
-    const lines = [
-      `${headerLabel} (${dateRange}):`,
-      `  Competitors n=${stats.n}, median $${stats.median}/day, range $${stats.min}–$${stats.max}`,
-      ...buildMineLines(window, stats, windowKey, group, myIds).map((l) => `  ${l}`),
-      ``,
-      `  Competitors:`,
-    ];
-    for (const c of competitorRows(window, myIds)) {
-      lines.push(`    ${c.label} => Avg Daily: $${c.avgDaily}, total_charged_usd: $${c.totalCharged}`);
+// ---------------------------------------------------------------------------
+// File discovery
+// ---------------------------------------------------------------------------
+
+function discoverWindows(groupId, runDate) {
+  const dataDir = join(REPO_ROOT, "data");
+  const prefix = `AUS-${groupId}-${runDate}-`;
+  const found = [];
+  if (existsSync(dataDir)) {
+    for (const name of readdirSync(dataDir)) {
+      if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
+      // Extract window id from filename: AUS-{group}-{date}-{label}.json
+      // label looks like "wk1-weekdays-4day" -> map back to id "w1-weekdays"
+      const labelWithExt = name.slice(prefix.length); // e.g. "wk1-weekdays-4day.json"
+      const labelMatch = labelWithExt.match(/^wk(\d+)-(weekdays|weekend)-\d+day\.json$/);
+      if (!labelMatch) continue;
+      const id = `w${labelMatch[1]}-${labelMatch[2]}`;
+      try {
+        const data = JSON.parse(readFileSync(join(dataDir, name), "utf8"));
+        found.push({ id, data });
+      } catch (err) {
+        console.error(`WARN: failed to parse ${name}: ${err.message}`);
+      }
+    }
+  }
+  // Sort canonically
+  found.sort((a, b) => CANONICAL_WINDOW_ORDER.indexOf(a.id) - CANONICAL_WINDOW_ORDER.indexOf(b.id));
+  return found;
+}
+
+// ---------------------------------------------------------------------------
+// Summary table (text)
+// ---------------------------------------------------------------------------
+
+function padR(s, w) { s = String(s); return s.length >= w ? s : s + " ".repeat(w - s.length); }
+function padL(s, w) { s = String(s); return s.length >= w ? s : " ".repeat(w - s.length) + s; }
+
+function buildSummaryTableText(windows, group, myIds) {
+  const myCols = group.listings.map((l) => shortListingLabel(l.label));
+  // Column widths
+  const W_WIN = 18;
+  const W_DATE = 30;
+  const W_MINE = Math.max(8, ...myCols.map((c) => c.length + 2));
+  const W_MED = 10;
+  const W_N = 4;
+  const W_RANGE = 14;
+
+  const header =
+    padR("WINDOW", W_WIN) +
+    padR("DATE RANGE", W_DATE) +
+    myCols.map((c) => padL(c, W_MINE)).join("") +
+    padL("MEDIAN", W_MED) +
+    padL("N", W_N) +
+    padL("RANGE", W_RANGE);
+
+  const sep = "─".repeat(header.length);
+
+  const rows = [];
+  for (const id of CANONICAL_WINDOW_ORDER) {
+    const win = windows.find((w) => w.id === id);
+    const label = WINDOW_DISPLAY_LABEL[id];
+    if (!win) {
+      rows.push(
+        padR(label, W_WIN) +
+        padR("(no data)", W_DATE) +
+        myCols.map(() => padL("—", W_MINE)).join("") +
+        padL("—", W_MED) +
+        padL("—", W_N) +
+        padL("—", W_RANGE),
+      );
+      continue;
+    }
+    const stats = computeStats(win.data.listings);
+    const dateRange = formatDateRange(win.data);
+    const mineCells = group.listings.map((l) => {
+      const me = getMyEntry(win.data, l, myIds);
+      return padL(me ? `$${me.daily}` : "—", W_MINE);
+    });
+    const medianCell = stats.median != null ? `$${stats.median.toFixed(2)}` : "—";
+    const rangeCell = stats.n > 0 ? `$${stats.min}–$${stats.max}` : "—";
+    rows.push(
+      padR(label, W_WIN) +
+      padR(dateRange, W_DATE) +
+      mineCells.join("") +
+      padL(medianCell, W_MED) +
+      padL(stats.n, W_N) +
+      padL(rangeCell, W_RANGE),
+    );
+  }
+
+  return [header, sep, ...rows].join("\n");
+}
+
+function buildSummaryTableHtml(windows, group, myIds) {
+  const myCols = group.listings.map((l) => shortListingLabel(l.label));
+  const th = (txt, align = "left") =>
+    `<th style="text-align:${align};padding:4px 8px;border-bottom:1px solid #ccc;font-weight:600">${escapeHtml(txt)}</th>`;
+  const td = (txt, align = "left", style = "") =>
+    `<td style="text-align:${align};padding:3px 8px;${style}">${txt}</td>`;
+
+  const headRow =
+    `<tr>${th("Window")}${th("Date range")}${myCols.map((c) => th(c, "right")).join("")}${th("Median", "right")}${th("N", "right")}${th("Range", "right")}</tr>`;
+
+  const bodyRows = [];
+  for (const id of CANONICAL_WINDOW_ORDER) {
+    const win = windows.find((w) => w.id === id);
+    const label = WINDOW_DISPLAY_LABEL[id];
+    if (!win) {
+      bodyRows.push(
+        `<tr>${td(escapeHtml(label))}${td("(no data)", "left", "color:#999")}${myCols.map(() => td("—", "right", "color:#999")).join("")}${td("—", "right", "color:#999")}${td("—", "right", "color:#999")}${td("—", "right", "color:#999")}</tr>`,
+      );
+      continue;
+    }
+    const stats = computeStats(win.data.listings);
+    const mineCells = group.listings
+      .map((l) => {
+        const me = getMyEntry(win.data, l, myIds);
+        return td(me ? `$${me.daily}` : "—", "right", me ? "font-weight:600" : "color:#999");
+      })
+      .join("");
+    const medianCell = stats.median != null ? `$${stats.median.toFixed(2)}` : "—";
+    const rangeCell = stats.n > 0 ? `$${stats.min}–$${stats.max}` : "—";
+    bodyRows.push(
+      `<tr>${td(escapeHtml(label))}${td(escapeHtml(formatDateRange(win.data)))}${mineCells}${td(medianCell, "right")}${td(stats.n, "right")}${td(rangeCell, "right")}</tr>`,
+    );
+  }
+
+  return `<table style="border-collapse:collapse;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:13px;margin:0 0 20px 0">
+    <thead>${headRow}</thead>
+    <tbody>${bodyRows.join("")}</tbody>
+  </table>`;
+}
+
+// ---------------------------------------------------------------------------
+// Per-window detail sections (text + HTML)
+// ---------------------------------------------------------------------------
+
+function buildWindowSectionText(win, group, myIds) {
+  const label = WINDOW_DISPLAY_LABEL[win.id];
+  const stats = computeStats(win.data.listings);
+  const lines = [`═══ ${label} — ${formatDateRange(win.data)} ═══`];
+
+  // Stats
+  if (stats.n > 0) {
+    lines.push(`  n=${stats.n}, median $${stats.median.toFixed(2)}/day, range $${stats.min}–$${stats.max}`);
+  } else {
+    lines.push(`  (no competitors found for this window)`);
+  }
+
+  // Mine
+  for (const l of group.listings) {
+    const me = getMyEntry(win.data, l, myIds);
+    if (!me) {
+      lines.push(`  ${l.label}: not listed`);
+      continue;
+    }
+    const vsMedian = stats.median != null ? me.daily - stats.median : null;
+    let vsStr = "";
+    if (vsMedian != null) {
+      if (vsMedian > 0) vsStr = ` (+$${vsMedian.toFixed(2)} vs median)`;
+      else if (vsMedian < 0) vsStr = ` (-$${Math.abs(vsMedian).toFixed(2)} vs median)`;
+      else vsStr = ` (at median)`;
+    }
+    lines.push(`  ${l.label}: $${me.daily}/day, rank ${me.rank}/${me.total}${vsStr}`);
+  }
+
+  // Competitor edges
+  const rows = competitorRows(win.data, myIds);
+  const edges = competitorEdges(rows);
+  if (edges.all) {
+    if (edges.all.length > 0) {
+      lines.push(`  Competitors:`);
+      for (const c of edges.all) {
+        lines.push(`    $${c.avgDaily}/day — ${c.label}`);
+        lines.push(`      ${c.url}`);
+      }
+    }
+  } else {
+    lines.push(`  Cheapest 3:`);
+    for (const c of edges.cheapest) {
+      lines.push(`    $${c.avgDaily}/day — ${c.label}`);
       lines.push(`      ${c.url}`);
     }
-    return lines;
-  };
+    lines.push(`  Most expensive 3:`);
+    for (const c of edges.expensive) {
+      lines.push(`    $${c.avgDaily}/day — ${c.label}`);
+      lines.push(`      ${c.url}`);
+    }
+  }
 
-  return [
-    carHeader,
-    ``,
-    ...windowSection(windowA, statsA, "Window A — 3-day immediate", "Window A"),
-    ``,
-    ...windowSection(windowB, statsB, "Window B — 4-day next week", "Window B"),
-    ``,
-    `Raw links:`,
-    windowA ? `  Window A search: ${windowA.query.search_url}` : `  Window A search: (no data)`,
-    windowB ? `  Window B search: ${windowB.query.search_url}` : `  Window B search: (no data)`,
-  ].join("\n");
+  return lines.join("\n");
 }
 
-function buildHtmlBody({ windowA, windowB, statsA, statsB, group }) {
-  const myIds = new Set(group.listings.map((l) => l.listing_id));
-  const carHeader = getCarHeader(group, [windowA, windowB]);
+function buildWindowSectionHtml(win, group, myIds) {
+  const label = WINDOW_DISPLAY_LABEL[win.id];
+  const stats = computeStats(win.data.listings);
+  const parts = [];
+  parts.push(`<h3 style="font-size:14px;margin:18px 0 4px">${escapeHtml(label)} <span style="color:#666;font-weight:normal">— ${escapeHtml(formatDateRange(win.data))}</span></h3>`);
 
-  const windowSection = (window, stats, headerLabel, windowKey) => {
-    if (!window) {
-      return `<h2 style="font-size:15px;margin:16px 0 6px">${escapeHtml(headerLabel)}</h2><p>NO DATA</p>`;
+  if (stats.n > 0) {
+    parts.push(`<div style="color:#444;margin-bottom:4px">n=${stats.n}, median $${stats.median.toFixed(2)}/day, range $${stats.min}–$${stats.max}</div>`);
+  } else {
+    parts.push(`<div style="color:#999;margin-bottom:4px">(no competitors found for this window)</div>`);
+  }
+
+  // Mine
+  const mineLines = group.listings.map((l) => {
+    const me = getMyEntry(win.data, l, myIds);
+    if (!me) return `<div style="color:#999">${escapeHtml(l.label)}: not listed</div>`;
+    const vsMedian = stats.median != null ? me.daily - stats.median : null;
+    let vsStr = "";
+    if (vsMedian != null) {
+      if (vsMedian > 0) vsStr = ` (+$${vsMedian.toFixed(2)} vs median)`;
+      else if (vsMedian < 0) vsStr = ` (-$${Math.abs(vsMedian).toFixed(2)} vs median)`;
+      else vsStr = ` (at median)`;
     }
-    const dateRange = `${window.query.start_date} → ${window.query.end_date}, ${window.query.days} days`;
-    const mineLines = buildMineLines(window, stats, windowKey, group, myIds)
-      .map((l) => `<div>${escapeHtml(l)}</div>`)
-      .join("");
-    const compRows = competitorRows(window, myIds)
-      .map(
-        (c) =>
-          `<li>${escapeHtml(c.label)} =&gt; Avg Daily: $${c.avgDaily}, total_charged_usd: $${c.totalCharged} → <a href="${escapeHtml(c.url)}">Link</a></li>`,
-      )
-      .join("");
-    return `
-      <h2 style="font-size:15px;margin:16px 0 6px">${escapeHtml(headerLabel)} <span style="color:#666;font-weight:normal">(${escapeHtml(dateRange)})</span></h2>
-      <div>Competitors n=${stats.n}, median $${stats.median}/day, range $${stats.min}–$${stats.max}</div>
-      <div style="margin-top:4px">${mineLines}</div>
-      <div style="margin-top:10px"><strong>Competitors:</strong></div>
-      <ul style="margin:4px 0 0 0;padding-left:20px">${compRows}</ul>
-    `;
-  };
+    return `<div><strong>${escapeHtml(l.label)}:</strong> $${me.daily}/day, rank ${me.rank}/${me.total}${escapeHtml(vsStr)}</div>`;
+  });
+  parts.push(`<div style="margin-bottom:8px">${mineLines.join("")}</div>`);
 
-  const rawLinks = [
-    windowA
-      ? `<li>Window A search: <a href="${escapeHtml(windowA.query.search_url)}">link</a></li>`
-      : `<li>Window A search: (no data)</li>`,
-    windowB
-      ? `<li>Window B search: <a href="${escapeHtml(windowB.query.search_url)}">link</a></li>`
-      : `<li>Window B search: (no data)</li>`,
-  ].join("");
+  // Competitor edges
+  const rows = competitorRows(win.data, myIds);
+  const edges = competitorEdges(rows);
+  const formatRow = (c) =>
+    `<li>$${c.avgDaily}/day — ${escapeHtml(c.label)} <a href="${escapeHtml(c.url)}">Link</a></li>`;
+
+  if (edges.all) {
+    if (edges.all.length > 0) {
+      parts.push(`<div style="margin-top:4px"><em>Competitors:</em></div>`);
+      parts.push(`<ul style="margin:2px 0 0;padding-left:20px">${edges.all.map(formatRow).join("")}</ul>`);
+    }
+  } else {
+    parts.push(`<div style="margin-top:4px"><em>Cheapest 3:</em></div>`);
+    parts.push(`<ul style="margin:2px 0 0;padding-left:20px">${edges.cheapest.map(formatRow).join("")}</ul>`);
+    parts.push(`<div style="margin-top:4px"><em>Most expensive 3:</em></div>`);
+    parts.push(`<ul style="margin:2px 0 0;padding-left:20px">${edges.expensive.map(formatRow).join("")}</ul>`);
+  }
+
+  return parts.join("");
+}
+
+// ---------------------------------------------------------------------------
+// Top-level body builders
+// ---------------------------------------------------------------------------
+
+function buildTextBody({ windows, group }) {
+  const myIds = new Set(group.listings.map((l) => l.listing_id));
+  const carHeader = getCarHeader(group, windows.map((w) => w.data));
+  const out = [carHeader, ""];
+
+  out.push(buildSummaryTableText(windows, group, myIds));
+  out.push("");
+
+  for (const id of CANONICAL_WINDOW_ORDER) {
+    const win = windows.find((w) => w.id === id);
+    if (!win) continue;
+    out.push("");
+    out.push(buildWindowSectionText(win, group, myIds));
+  }
+
+  out.push("", "Raw search links:");
+  for (const id of CANONICAL_WINDOW_ORDER) {
+    const win = windows.find((w) => w.id === id);
+    const label = WINDOW_DISPLAY_LABEL[id];
+    if (!win) {
+      out.push(`  ${label}: (no data)`);
+    } else {
+      out.push(`  ${label}: ${win.data.query.search_url}`);
+    }
+  }
+  return out.join("\n");
+}
+
+function buildHtmlBody({ windows, group }) {
+  const myIds = new Set(group.listings.map((l) => l.listing_id));
+  const carHeader = getCarHeader(group, windows.map((w) => w.data));
+
+  const detailSections = CANONICAL_WINDOW_ORDER
+    .map((id) => windows.find((w) => w.id === id))
+    .filter(Boolean)
+    .map((win) => buildWindowSectionHtml(win, group, myIds))
+    .join("");
+
+  const rawLinks = CANONICAL_WINDOW_ORDER.map((id) => {
+    const win = windows.find((w) => w.id === id);
+    const label = WINDOW_DISPLAY_LABEL[id];
+    if (!win) return `<li>${escapeHtml(label)}: (no data)</li>`;
+    return `<li>${escapeHtml(label)}: <a href="${escapeHtml(win.data.query.search_url)}">link</a></li>`;
+  }).join("");
 
   return `<!doctype html>
-<html><body style="font-family:-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45;color:#111">
-  <h1 style="font-size:18px;margin:0 0 4px">${escapeHtml(carHeader)}</h1>
-  ${windowSection(windowA, statsA, "Window A — 3-day immediate", "Window A")}
-  ${windowSection(windowB, statsB, "Window B — 4-day next week", "Window B")}
-  <h3 style="font-size:14px;margin:18px 0 4px">Raw links</h3>
-  <ul style="margin:0;padding-left:20px">${rawLinks}</ul>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45;color:#111;max-width:900px">
+  <h1 style="font-size:18px;margin:0 0 12px">${escapeHtml(carHeader)}</h1>
+  ${buildSummaryTableHtml(windows, group, myIds)}
+  ${detailSections}
+  <h3 style="font-size:14px;margin:18px 0 4px">Raw search links</h3>
+  <ul style="margin:0;padding-left:20px;font-size:13px">${rawLinks}</ul>
 </body></html>`;
 }
+
+// ---------------------------------------------------------------------------
+// Config + main
+// ---------------------------------------------------------------------------
 
 function loadGroup(groupId) {
   const configFile = join(REPO_ROOT, "config", "my-listings.json");
@@ -256,31 +516,18 @@ async function main() {
   if (!groupId) throw new Error(`GROUP_ID env var is required (e.g. GROUP_ID=tiguans node src/send-email.js)`);
 
   const group = loadGroup(groupId);
-
   const runDate = process.argv[2] || chicagoToday();
-  const dataDir = join(REPO_ROOT, "data");
-  const fileA = join(dataDir, `AUS-${groupId}-${runDate}-window-a-3day.json`);
-  const fileB = join(dataDir, `AUS-${groupId}-${runDate}-window-b-4day.json`);
 
   console.error(`Building email for group=${groupId} date=${runDate}`);
-  console.error(`  window A: ${fileA}`);
-  console.error(`  window B: ${fileB}`);
+  const windows = discoverWindows(groupId, runDate);
+  console.error(`  discovered ${windows.length}/8 windows: ${windows.map((w) => w.id).join(", ") || "(none)"}`);
 
-  const missing = [];
-  let windowA = null;
-  let windowB = null;
-  if (existsSync(fileA)) windowA = JSON.parse(readFileSync(fileA, "utf8"));
-  else missing.push(fileA);
-  if (existsSync(fileB)) windowB = JSON.parse(readFileSync(fileB, "utf8"));
-  else missing.push(fileB);
-
-  if (missing.length > 0) {
-    console.error(`Missing data files: ${missing.join(", ")}`);
+  if (windows.length === 0) {
+    console.error(`No window data found for group ${groupId} on ${runDate} — sending alert`);
     const alertBody =
-      `Today's Turo scrape data files for group "${group.label}" were not found:\n\n` +
-      missing.map((m) => `  ${m}`).join("\n") +
-      `\n\nThe local scraper may have failed for this group. Check logs/run-${runDate}.log on the Mac.\n` +
-      `Run \`launchctl print gui/$(id -u)/com.nickorefice.turo-tiguans\` for launchd status.`;
+      `No Turo scrape data files found for group "${group.label}" on ${runDate}.\n\n` +
+      `Expected files like: data/AUS-${groupId}-${runDate}-wk*-{weekdays|weekend}-*.json\n\n` +
+      `Check logs/run-${runDate}.log on the Mac. Run \`launchctl print gui/$(id -u)/com.nickorefice.turo-tiguans\` for launchd status.`;
     await sendViaResend({
       apiKey: RESEND_API_KEY,
       from: EMAIL_FROM,
@@ -292,14 +539,9 @@ async function main() {
     return;
   }
 
-  const statsA = computeStats(windowA.listings);
-  const statsB = computeStats(windowB.listings);
-  console.error(`  window A: ${statsA.n} competitors, median $${statsA.median}/day`);
-  console.error(`  window B: ${statsB.n} competitors, median $${statsB.median}/day`);
-
   const subject = `Turo Austin daily — ${runDate} — ${group.label}`;
-  const text = buildTextBody({ windowA, windowB, statsA, statsB, group });
-  const html = buildHtmlBody({ windowA, windowB, statsA, statsB, group });
+  const text = buildTextBody({ windows, group });
+  const html = buildHtmlBody({ windows, group });
 
   console.error(`Sending email to ${EMAIL_TO}...`);
   const sendResult = await sendViaResend({

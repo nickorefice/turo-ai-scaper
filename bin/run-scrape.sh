@@ -61,36 +61,56 @@ log "starting scrape across all groups"
 "$NODE" src/scrape.js 2>> "$LOG" > /dev/null
 log "scrape finished"
 
-# Validate per-(group, window) output files. Track which groups have full data.
+# Validate per-(group, window) output files. With 8 windows per group, we
+# relax the "ok" criterion: a group is OK for emailing if AT LEAST ONE window
+# has listing_count >= 1. The email layout handles missing/empty windows
+# gracefully ("(no data)" rows in the summary table).
 OK_GROUP_IDS=()
 FAILED_GROUP_IDS=()
 COMMIT_FILES=()
+WINDOW_LABELS=(
+  "wk1-weekdays-4day" "wk1-weekend-3day"
+  "wk2-weekdays-4day" "wk2-weekend-3day"
+  "wk3-weekdays-4day" "wk3-weekend-3day"
+  "wk4-weekdays-4day" "wk4-weekend-3day"
+)
 for group in $GROUP_IDS; do
-  group_ok=1
-  for win in "window-a-3day" "window-b-4day"; do
+  group_windows_ok=0
+  group_windows_total=0
+  for win in "${WINDOW_LABELS[@]}"; do
     f="data/AUS-${group}-${DATE}-${win}.json"
+    group_windows_total=$((group_windows_total + 1))
     if [ ! -s "$f" ]; then
       log "  WARN: missing or empty: $f"
-      group_ok=0
       continue
     fi
     COUNT="$(jq -r '.listing_count // 0' "$f" 2>/dev/null || echo 0)"
     if [ "$COUNT" -lt 1 ]; then
-      log "  WARN: $f reports listing_count=$COUNT"
-      group_ok=0
+      log "  empty: $f (listing_count=0)"
+      # Still commit the file — documents the bot-blocked attempt.
+      COMMIT_FILES+=("$f")
       continue
     fi
     log "  ok: $f (listing_count=$COUNT)"
     COMMIT_FILES+=("$f")
+    group_windows_ok=$((group_windows_ok + 1))
   done
-  if [ "$group_ok" = "1" ]; then
+  if [ "$group_windows_ok" -ge 1 ]; then
     OK_GROUP_IDS+=("$group")
+    log "  $group: ${group_windows_ok}/${group_windows_total} windows have data"
   else
     FAILED_GROUP_IDS+=("$group")
+    log "  $group: ALL ${group_windows_total} windows empty"
   fi
 done
 
 log "scrape summary: ok=[${OK_GROUP_IDS[*]:-}] failed=[${FAILED_GROUP_IDS[*]:-}]"
+
+# Include the persistent host cache in the commit if it changed.
+if [ -f "data/host-cache.json" ] && ! git diff --quiet -- data/host-cache.json 2>/dev/null; then
+  COMMIT_FILES+=("data/host-cache.json")
+  log "  host-cache.json: modified, will be included in commit"
+fi
 
 if [ "${#OK_GROUP_IDS[@]}" -eq 0 ]; then
   log "ERROR: no groups produced valid output — refusing to commit/email"
