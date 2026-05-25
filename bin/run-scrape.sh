@@ -97,41 +97,10 @@ if [ "${#OK_GROUP_IDS[@]}" -eq 0 ]; then
   exit 1
 fi
 
-if [ "$AUTO_COMMIT" = "1" ]; then
-  if [ ! -r "$GH_TOKEN_FILE" ]; then
-    log "ERROR: AUTO_COMMIT=1 but PAT file not readable: $GH_TOKEN_FILE"
-    exit 1
-  fi
-  GITHUB_TOKEN="$(cat "$GH_TOKEN_FILE")"
-
-  log "syncing with origin/main"
-  git fetch origin --quiet 2>> "$LOG"
-  git rebase --autostash origin/main 2>> "$LOG" || {
-    log "ERROR: rebase failed; aborting and resetting"
-    git rebase --abort 2>/dev/null || true
-    exit 1
-  }
-
-  OK_LIST="$(IFS=,; echo "${OK_GROUP_IDS[*]}")"
-  log "staging + committing ${#COMMIT_FILES[@]} files for groups: ${OK_LIST}"
-  git add -- "${COMMIT_FILES[@]}"
-  if git diff --cached --quiet; then
-    log "nothing to commit (files already match HEAD)"
-  else
-    git -c user.name="turo-scraper" -c user.email="scraper@localhost" commit \
-      -m "data: AUS daily ${DATE} (${OK_LIST})" \
-      2>> "$LOG" > /dev/null
-
-    PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
-    log "pushing to ${GH_REPO}"
-    git push "$PUSH_URL" main 2>> "$LOG" > /dev/null
-    log "push complete"
-  fi
-else
-  log "AUTO_COMMIT=$AUTO_COMMIT, skipping git commit/push"
-fi
-
-# Per-group email sends. Each group is independent — one failure does not block others.
+# --- Per-group email sends FIRST. ---
+# Emails are the user-facing output and must not be blocked by housekeeping
+# (commit / push) failures further down. Each group is independent — one
+# email failure does not block the others.
 SEND_EMAIL="${SEND_EMAIL:-1}"
 if [ "$SEND_EMAIL" = "1" ]; then
   for group in "${OK_GROUP_IDS[@]}"; do
@@ -149,6 +118,44 @@ if [ "$SEND_EMAIL" = "1" ]; then
   done
 else
   log "SEND_EMAIL=$SEND_EMAIL, skipping email"
+fi
+
+# --- AUTO_COMMIT is housekeeping. Failures here log and continue. ---
+# A push failure must NEVER block tomorrow's run (which only checks worktree
+# cleanliness via the data/+logs/ filter, not whether origin is ahead).
+if [ "$AUTO_COMMIT" = "1" ]; then
+  if [ ! -r "$GH_TOKEN_FILE" ]; then
+    log "WARN: AUTO_COMMIT=1 but PAT file not readable: $GH_TOKEN_FILE — skipping commit/push"
+  else
+    GITHUB_TOKEN="$(cat "$GH_TOKEN_FILE")"
+
+    log "syncing with origin/main"
+    if git fetch origin --quiet 2>> "$LOG" && git rebase --autostash origin/main 2>> "$LOG"; then
+      OK_LIST="$(IFS=,; echo "${OK_GROUP_IDS[*]}")"
+      log "staging + committing ${#COMMIT_FILES[@]} files for groups: ${OK_LIST}"
+      git add -- "${COMMIT_FILES[@]}"
+      if git diff --cached --quiet; then
+        log "nothing to commit (files already match HEAD)"
+      else
+        git -c user.name="turo-scraper" -c user.email="scraper@localhost" commit \
+          -m "data: AUS daily ${DATE} (${OK_LIST})" \
+          2>> "$LOG" > /dev/null
+
+        PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
+        log "pushing to ${GH_REPO}"
+        if git push "$PUSH_URL" main 2>> "$LOG" > /dev/null; then
+          log "push complete"
+        else
+          log "WARN: push failed (commit kept locally; will be pushed by next successful run)"
+        fi
+      fi
+    else
+      log "WARN: fetch/rebase failed — skipping commit/push"
+      git rebase --abort 2>/dev/null || true
+    fi
+  fi
+else
+  log "AUTO_COMMIT=$AUTO_COMMIT, skipping git commit/push"
 fi
 
 log "wrapper complete"
