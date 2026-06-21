@@ -6,6 +6,8 @@
 # - Sends one email per group via Resend (independent invocations — one group's
 #   email failure does not block the others).
 # - Optionally commits + pushes the day's data files to GitHub when AUTO_COMMIT=1.
+# - Idempotent per day: after scrape+email succeeds, later scheduled invocations
+#   exit without touching Turo. Use FORCE_RUN=1 to ignore the daily success stamp.
 #
 # Defaults:
 #   AUTO_COMMIT=0    (override to 1 to enable commit/push; PAT must be installed)
@@ -28,6 +30,7 @@ mkdir -p data logs
 DATE="$(date +%Y-%m-%d)"
 LOG="logs/run-${DATE}.log"
 CONFIG="config/my-listings.json"
+SUCCESS_STAMP="logs/success-${DATE}.stamp"
 
 log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG" >&2; }
 
@@ -57,9 +60,10 @@ if [ -z "$GROUP_IDS" ]; then
 fi
 log "discovered groups: $GROUP_IDS"
 
-log "starting scrape across all groups"
-"$NODE" src/scrape.js 2>> "$LOG" > /dev/null
-log "scrape finished"
+if [ "${FORCE_RUN:-0}" != "1" ] && [ -s "$SUCCESS_STAMP" ]; then
+  log "daily success stamp exists ($SUCCESS_STAMP); skipping scrape/email"
+  exit 0
+fi
 
 # Validate per-(group, window) output files. With 8 windows per group, we
 # relax the "ok" criterion: a group is OK for emailing if AT LEAST ONE window
@@ -74,6 +78,34 @@ WINDOW_LABELS=(
   "wk3-weekdays-4day" "wk3-weekend-3day"
   "wk4-weekdays-4day" "wk4-weekend-3day"
 )
+
+existing_data_ok=1
+for group in $GROUP_IDS; do
+  group_windows_ok=0
+  for win in "${WINDOW_LABELS[@]}"; do
+    f="data/AUS-${group}-${DATE}-${win}.json"
+    if [ ! -s "$f" ]; then
+      continue
+    fi
+    COUNT="$(jq -r '.listing_count // 0' "$f" 2>/dev/null || echo 0)"
+    if [ "$COUNT" -ge 1 ]; then
+      group_windows_ok=$((group_windows_ok + 1))
+    fi
+  done
+  if [ "$group_windows_ok" -lt 1 ]; then
+    existing_data_ok=0
+    break
+  fi
+done
+
+if [ "${FORCE_RUN:-0}" != "1" ] && [ "$existing_data_ok" = "1" ]; then
+  log "today's data already exists for all groups; skipping scrape and continuing to validation/email"
+else
+  log "starting scrape across all groups"
+  "$NODE" src/scrape.js 2>> "$LOG" > /dev/null
+  log "scrape finished"
+fi
+
 for group in $GROUP_IDS; do
   group_windows_ok=0
   group_windows_total=0
@@ -139,6 +171,15 @@ if [ "$SEND_EMAIL" = "1" ]; then
 else
   log "SEND_EMAIL=$SEND_EMAIL, skipping email"
 fi
+
+{
+  echo "date=${DATE}"
+  echo "ok_groups=${OK_GROUP_IDS[*]:-}"
+  echo "failed_groups=${FAILED_GROUP_IDS[*]:-}"
+  echo "send_email=${SEND_EMAIL}"
+  date -Iseconds
+} > "$SUCCESS_STAMP"
+log "wrote daily success stamp: $SUCCESS_STAMP"
 
 # --- AUTO_COMMIT is housekeeping. Failures here log and continue. ---
 # A push failure must NEVER block tomorrow's run (which only checks worktree

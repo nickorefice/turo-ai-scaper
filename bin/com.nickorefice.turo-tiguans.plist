@@ -19,16 +19,34 @@
     <key>WorkingDirectory</key>
     <string>/Users/nickorefice/code/turo-ai-scaper</string>
 
-    <!-- Fire once a day at 09:00 local time -->
+    <!--
+      Try three times each morning. bin/run-scrape.sh is idempotent:
+      once a daily success stamp exists, later invocations skip without
+      touching Turo or sending duplicate email.
+    -->
     <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>9</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <array>
+        <dict>
+            <key>Hour</key>
+            <integer>9</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>10</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>12</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
 
-    <!-- If the Mac was asleep at 09:00, run as soon as it wakes -->
+    <!-- Do not run immediately when loaded; scheduled attempts handle catch-up. -->
     <key>RunAtLoad</key>
     <false/>
 
