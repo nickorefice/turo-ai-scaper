@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-06-21T19:05:15.368Z",
+  "group_id": "2-series",
+  "group_label": "BMW 2 Series",
+  "window_id": "w2-weekend",
+  "window_label": "wk2-weekend-3day",
+  "query": {
+    "location": "Austin, TX",
+    "start_date": "2026-07-03",
+    "end_date": "2026-07-06",
+    "days": 3,
+    "make": "BMW",
+    "models": [
+      "2 Series"
+    ],
+    "search_url": "https://turo.com/us/en/search?country=US&defaultZoomLevel=11&endDate=07%2F06%2F2026&endTime=10%3A00&flexibleType=NOT_FLEXIBLE&isMapSearch=false&itemsPerPage=200&latitude=30.267153&location=Austin%2C+TX&locationType=CITY&longitude=-97.7430608&makes=BMW&models=2+Series&pickupType=ALL&placeId=ChIJLwPMoJm1RIYRetVp1EtGm10&region=TX&searchDurationType=DAILY&sortType=RELEVANCE&startDate=07%2F03%2F2026&startTime=10%3A00"
+  },
+  "total_listings_returned": 1,
+  "listings_before_city_filter": 1,
+  "listing_count": 1,
+  "allowed_city_slugs": [
+    "austin-tx"
+  ],
+  "owner_label": "Favorite Rental LLC",
+  "listings": [
+    {
+      "listing_id": "3369027",
+      "year": 2024,
+      "make": "BMW",
+      "model": "2 Series",
+      "city_slug": "austin-tx",
+      "host_name": "DM",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 381,
+      "total_original_usd": 393,
+      "avg_daily_usd": 127,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/bmw/2-series/3369027?endDate=07%2F06%2F2026&endTime=10%3A00&searchId=iDyggzez&searchRegion=TX&startDate=07%2F03%2F2026&startTime=10%3A00"
+    }
+  ]
+}

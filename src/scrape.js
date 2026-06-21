@@ -311,6 +311,13 @@ async function scrollAndCollect(page, { maxRounds = 60, idleRounds = 5, pause = 
   return [...collected.values()];
 }
 
+function detectBlockedPage(debug) {
+  const title = debug?.title || "";
+  const bodyTextStart = debug?.bodyTextStart || "";
+  const text = `${title}\n${bodyTextStart}`;
+  return /you'?ve been blocked|sorry,\s+you'?ve been blocked|ray id:/i.test(text);
+}
+
 async function scrapeHost(page, listingUrl) {
   await page.goto(listingUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
@@ -374,6 +381,9 @@ async function runWindow({ searchPage, hostPage, spec, group, ownerLabel, cache,
       bodyTextStart: document.body.innerText.replace(/\s+/g, " ").slice(0, 400),
     }));
     console.error(`  giving up after ${maxAttempts} attempts. Debug:`, JSON.stringify(dbg));
+    if (detectBlockedPage(dbg)) {
+      throw new Error(`Turo block page detected after ${maxAttempts} attempts for ${group.group_id}/${spec.id}`);
+    }
   }
 
   // Exact make+model match (lowercase). Tiguan ≠ Tiguan Limited ≠ X2 ≠ 2 Series.

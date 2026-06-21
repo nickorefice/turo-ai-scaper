@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@striderlabs/mcp-turo": "^1.0.0"
+    "@striderlabs/mcp-turo": "^1.0.0",
+    "patchright": "^1.60.0"
   }
 }
