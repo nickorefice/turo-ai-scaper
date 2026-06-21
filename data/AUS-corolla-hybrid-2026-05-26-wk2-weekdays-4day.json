@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T13:23:01.360Z",
+  "generated_at": "2026-05-26T14:12:22.081Z",
   "group_id": "corolla-hybrid",
   "group_label": "Corolla Hybrid",
   "window_id": "w2-weekdays",
@@ -35,7 +35,7 @@
       "total_charged_usd": 200,
       "total_original_usd": 206,
       "avg_daily_usd": 50,
-      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/2010851?endDate=06%2F12%2F2026&endTime=10%3A00&searchId=hLBher0y&searchRegion=TX&startDate=06%2F08%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/2010851?endDate=06%2F12%2F2026&endTime=10%3A00&searchId=lauME2Dn&searchRegion=TX&startDate=06%2F08%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "1461722",
@@ -49,7 +49,7 @@
       "total_charged_usd": 236,
       "total_original_usd": 243,
       "avg_daily_usd": 59,
-      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/1461722?endDate=06%2F12%2F2026&endTime=10%3A00&searchId=hLBher0y&searchRegion=TX&startDate=06%2F08%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/1461722?endDate=06%2F12%2F2026&endTime=10%3A00&searchId=lauME2Dn&searchRegion=TX&startDate=06%2F08%2F2026&startTime=10%3A00"
     },
     {
       "listing_id": "3691223",
@@ -63,7 +63,7 @@
       "total_charged_usd": 219,
       "total_original_usd": 231,
       "avg_daily_usd": 54.75,
-      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/3691223?endDate=06%2F12%2F2026&endTime=10%3A00&searchId=hLBher0y&searchRegion=TX&startDate=06%2F08%2F2026&startTime=10%3A00"
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/3691223?endDate=06%2F12%2F2026&endTime=10%3A00&searchId=lauME2Dn&searchRegion=TX&startDate=06%2F08%2F2026&startTime=10%3A00"
     }
   ]
 }
