@@ -1,5 +1,26 @@
 {
   "owner_label": "Favorite Rental LLC",
+  "earnings_plan": "more_earnings",
+  "damage_responsibility_usd": 2750,
+  "_comment_host_share": "Austin dynamic share for the 'More earnings' plan, by guest booking lead time (days before pickup), from the Turo host dashboard. Highest matching min_lead_days wins.",
+  "host_share_schedule": [
+    { "min_lead_days": 28, "share": 1.0 },
+    { "min_lead_days": 14, "share": 0.95 },
+    { "min_lead_days": 3, "share": 0.9 },
+    { "min_lead_days": 0, "share": 0.85 }
+  ],
+  "_comment_discounts": "Trip-length discounts as set in Turo (consistent across cars). Only daily_pct applies to 3-4 night windows; weekly/monthly stored for longer trips. Highest matching min_days wins.",
+  "discounts": {
+    "trip_length": [
+      { "min_days": 28, "pct": 0.25 },
+      { "min_days": 21, "pct": 0.2 },
+      { "min_days": 14, "pct": 0.15 },
+      { "min_days": 7, "pct": 0.1 },
+      { "min_days": 3, "pct": 0.03 }
+    ]
+  },
+  "_comment_turo_markup": "Beyond the visible trip discount, Turo reduces the search/booking price a further ~5% below your calendar base. Measured by comparing your calendar prices to scraped booking prices across 11 listings/windows: booking was consistently ~92% of calendar (flat across lead times), i.e. ~3% trip discount + ~5% extra. The suggested calendar price grosses both up. Re-measure if Turo changes.",
+  "turo_search_markup_pct": 0.05,
   "groups": [
     {
       "group_id": "tiguans",

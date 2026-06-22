@@ -473,6 +473,10 @@ function buildTextBody({ windows, group, advice }) {
   }
 
   out.push(buildSummaryTableText(windows, group, myIds, advice));
+  out.push("SUGGEST = the per-day price to set in your Turo CALENDAR (not the booking total).");
+  out.push("Turo knocks ~8% off your calendar price (3% trip discount + ~5% extra) to get the");
+  out.push("booking price guests see, so this is grossed up to land your booking ~$1 under the");
+  out.push("cheapest comp. Far-out windows (28+ days) earn ~100% host share — prioritize those.");
   out.push("");
 
   for (const id of CANONICAL_WINDOW_ORDER) {
@@ -524,6 +528,9 @@ function buildHtmlBody({ windows, group, advice }) {
   <h1 style="font-size:18px;margin:0 0 12px">${escapeHtml(carHeader)}</h1>
   ${summaryBlock}
   ${buildSummaryTableHtml(windows, group, myIds, advice)}
+  <div style="font-size:12px;color:#666;margin:-12px 0 18px;max-width:680px">
+    <strong>Suggested</strong> = the per-day price to set in your Turo <strong>calendar</strong> (not the booking total). Turo knocks ~8% off your calendar price (3% trip discount + ~5% extra) to get the booking price guests see, so this is grossed up to land your booking ~$1 under the cheapest comp's. Far-out windows (28+ days) earn ~100% host share — prioritize filling those.
+  </div>
   ${detailSections}
   <h3 style="font-size:14px;margin:18px 0 4px">Raw search links</h3>
   <ul style="margin:0;padding-left:20px;font-size:13px">${rawLinks}</ul>
@@ -542,7 +549,7 @@ function loadGroup(groupId) {
     const available = (config.groups || []).map((g) => g.group_id).join(", ");
     throw new Error(`group_id "${groupId}" not found in config/my-listings.json. Available: ${available}`);
   }
-  return group;
+  return { group, config };
 }
 
 async function main() {
@@ -562,7 +569,7 @@ async function main() {
   const groupId = process.env.GROUP_ID;
   if (!groupId) throw new Error(`GROUP_ID env var is required (e.g. GROUP_ID=tiguans node src/send-email.js)`);
 
-  const group = loadGroup(groupId);
+  const { group, config } = loadGroup(groupId);
   const runDate = process.argv[2] || chicagoToday();
 
   console.error(`Building email for group=${groupId} date=${runDate}`);
@@ -586,7 +593,16 @@ async function main() {
     return;
   }
 
-  const advice = await getPricingAdvice({ group, windows, apiKey: OPENAI_API_KEY });
+  const advice = await getPricingAdvice({
+    group,
+    windows,
+    apiKey: OPENAI_API_KEY,
+    discounts: config.discounts,
+    hostShareSchedule: config.host_share_schedule,
+    turoMarkup: config.turo_search_markup_pct,
+    damageResponsibility: config.damage_responsibility_usd,
+    runDate,
+  });
   console.error(`  pricing advice: summary=${advice.summary ? "yes" : "no"}, ${advice.suggestionsByWindowId.size} window suggestions`);
 
   const subject = `Turo Austin daily — ${runDate} — ${group.label}`;
