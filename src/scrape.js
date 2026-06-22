@@ -253,23 +253,33 @@ async function scrapeVisibleCards(page) {
         year = parseInt(altMatch[2], 10);
       }
 
+      // Turo shows the discounted trip total alongside a crossed-out (struck)
+      // pre-discount total, e.g. "$371 $359 total". We want total_charged to be
+      // the price the guest actually pays (the discounted one) — NEVER the
+      // crossed-out original. Identify the struck span by its line-through
+      // decoration; charged = the lowest NON-struck price, original = the
+      // highest struck price. Fall back to min/max when styling can't be read,
+      // since the charged total is always the lower of the two.
       const priceWrap = link.querySelector('[data-testid="vehicle-discount-and-price"]');
-      const spans = priceWrap ? [...priceWrap.querySelectorAll("span")] : [];
-      const dollars = spans
+      const priceSpans = priceWrap ? [...priceWrap.querySelectorAll("span")] : [];
+      const parsed = priceSpans
         .map((s) => {
           const m = (s.textContent || "").match(/\$([\d,]+(?:\.\d+)?)/);
-          return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+          if (!m) return null;
+          const value = parseFloat(m[1].replace(/,/g, ""));
+          const deco = `${window.getComputedStyle(s).textDecorationLine || ""} ${window.getComputedStyle(s).textDecoration || ""}`;
+          return { value, struck: /line-through/.test(deco) };
         })
-        .filter((n) => n !== null);
+        .filter(Boolean);
 
       let total_original = 0;
       let total_charged = 0;
-      if (dollars.length >= 2) {
-        total_original = dollars[0];
-        total_charged = dollars[dollars.length - 1];
-      } else if (dollars.length === 1) {
-        total_original = dollars[0];
-        total_charged = dollars[0];
+      if (parsed.length) {
+        const values = parsed.map((p) => p.value);
+        const notStruck = parsed.filter((p) => !p.struck).map((p) => p.value);
+        const struck = parsed.filter((p) => p.struck).map((p) => p.value);
+        total_charged = notStruck.length ? Math.min(...notStruck) : Math.min(...values);
+        total_original = struck.length ? Math.max(...struck) : Math.max(...values);
       }
 
       const fullHref = href.startsWith("http") ? href : `https://turo.com${href}`;
