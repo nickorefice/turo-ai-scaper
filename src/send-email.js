@@ -13,6 +13,11 @@
 //   RESEND_API_KEY=re_...
 //   EMAIL_TO=nickjoref@gmail.com,kennywilson212@gmail.com  (comma-separated for multiple)
 //   EMAIL_FROM=turo-daily@clearedapp.app
+//   OPENAI_API_KEY=sk-...   (optional — enables AI summary + suggested prices;
+//                            without it, the Suggested column falls back to a
+//                            deterministic "lowest comp − $1" baseline)
+//
+// Set DRY_RUN=1 to print the built email to stdout instead of sending via Resend.
 //
 // Usage:
 //   GROUP_ID=tiguans node src/send-email.js                 # today's date in America/Chicago
@@ -24,6 +29,7 @@ import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { getPricingAdvice } from "./ai-pricing.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -127,6 +133,17 @@ function shortListingLabel(label) {
   return label.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
+// "$72.5" / "$118" — trims trailing zeros so prices read cleanly.
+function fmtPrice(n) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
+  return `$${n.toFixed(2).replace(/\.?0+$/, "")}`;
+}
+
+// Suggested price for a window from the advice map (null/absent -> undefined).
+function suggestedFor(advice, windowId) {
+  return advice?.suggestionsByWindowId?.get(windowId)?.price ?? null;
+}
+
 function shortDay(dateStr) {
   // "2026-06-01" -> "Mon 6/1"
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -225,7 +242,7 @@ function discoverWindows(groupId, runDate) {
 function padR(s, w) { s = String(s); return s.length >= w ? s : s + " ".repeat(w - s.length); }
 function padL(s, w) { s = String(s); return s.length >= w ? s : " ".repeat(w - s.length) + s; }
 
-function buildSummaryTableText(windows, group, myIds) {
+function buildSummaryTableText(windows, group, myIds, advice) {
   const myCols = group.listings.map((l) => shortListingLabel(l.label));
   // Column widths
   const W_WIN = 18;
@@ -234,6 +251,7 @@ function buildSummaryTableText(windows, group, myIds) {
   const W_MED = 10;
   const W_N = 4;
   const W_RANGE = 14;
+  const W_SUGGEST = 12;
 
   const header =
     padR("WINDOW", W_WIN) +
@@ -241,7 +259,8 @@ function buildSummaryTableText(windows, group, myIds) {
     myCols.map((c) => padL(c, W_MINE)).join("") +
     padL("MEDIAN", W_MED) +
     padL("N", W_N) +
-    padL("RANGE", W_RANGE);
+    padL("RANGE", W_RANGE) +
+    padL("SUGGEST", W_SUGGEST);
 
   const sep = "─".repeat(header.length);
 
@@ -256,7 +275,8 @@ function buildSummaryTableText(windows, group, myIds) {
         myCols.map(() => padL("—", W_MINE)).join("") +
         padL("—", W_MED) +
         padL("—", W_N) +
-        padL("—", W_RANGE),
+        padL("—", W_RANGE) +
+        padL("—", W_SUGGEST),
       );
       continue;
     }
@@ -268,20 +288,22 @@ function buildSummaryTableText(windows, group, myIds) {
     });
     const medianCell = stats.median != null ? `$${stats.median.toFixed(2)}` : "—";
     const rangeCell = stats.n > 0 ? `$${stats.min}–$${stats.max}` : "—";
+    const suggestCell = fmtPrice(suggestedFor(advice, id));
     rows.push(
       padR(label, W_WIN) +
       padR(dateRange, W_DATE) +
       mineCells.join("") +
       padL(medianCell, W_MED) +
       padL(stats.n, W_N) +
-      padL(rangeCell, W_RANGE),
+      padL(rangeCell, W_RANGE) +
+      padL(suggestCell, W_SUGGEST),
     );
   }
 
   return [header, sep, ...rows].join("\n");
 }
 
-function buildSummaryTableHtml(windows, group, myIds) {
+function buildSummaryTableHtml(windows, group, myIds, advice) {
   const myCols = group.listings.map((l) => shortListingLabel(l.label));
   const th = (txt, align = "left") =>
     `<th style="text-align:${align};padding:4px 8px;border-bottom:1px solid #ccc;font-weight:600">${escapeHtml(txt)}</th>`;
@@ -289,7 +311,7 @@ function buildSummaryTableHtml(windows, group, myIds) {
     `<td style="text-align:${align};padding:3px 8px;${style}">${txt}</td>`;
 
   const headRow =
-    `<tr>${th("Window")}${th("Date range")}${myCols.map((c) => th(c, "right")).join("")}${th("Median", "right")}${th("N", "right")}${th("Range", "right")}</tr>`;
+    `<tr>${th("Window")}${th("Date range")}${myCols.map((c) => th(c, "right")).join("")}${th("Median", "right")}${th("N", "right")}${th("Range", "right")}${th("Suggested", "right")}</tr>`;
 
   const bodyRows = [];
   for (const id of CANONICAL_WINDOW_ORDER) {
@@ -297,7 +319,7 @@ function buildSummaryTableHtml(windows, group, myIds) {
     const label = WINDOW_DISPLAY_LABEL[id];
     if (!win) {
       bodyRows.push(
-        `<tr>${td(escapeHtml(label))}${td("(no data)", "left", "color:#999")}${myCols.map(() => td("—", "right", "color:#999")).join("")}${td("—", "right", "color:#999")}${td("—", "right", "color:#999")}${td("—", "right", "color:#999")}</tr>`,
+        `<tr>${td(escapeHtml(label))}${td("(no data)", "left", "color:#999")}${myCols.map(() => td("—", "right", "color:#999")).join("")}${td("—", "right", "color:#999")}${td("—", "right", "color:#999")}${td("—", "right", "color:#999")}${td("—", "right", "color:#999")}</tr>`,
       );
       continue;
     }
@@ -310,8 +332,14 @@ function buildSummaryTableHtml(windows, group, myIds) {
       .join("");
     const medianCell = stats.median != null ? `$${stats.median.toFixed(2)}` : "—";
     const rangeCell = stats.n > 0 ? `$${stats.min}–$${stats.max}` : "—";
+    const suggest = suggestedFor(advice, id);
+    const suggestCell = td(
+      fmtPrice(suggest),
+      "right",
+      suggest != null ? "font-weight:700;color:#0a7d28" : "color:#999",
+    );
     bodyRows.push(
-      `<tr>${td(escapeHtml(label))}${td(escapeHtml(formatDateRange(win.data)))}${mineCells}${td(medianCell, "right")}${td(stats.n, "right")}${td(rangeCell, "right")}</tr>`,
+      `<tr>${td(escapeHtml(label))}${td(escapeHtml(formatDateRange(win.data)))}${mineCells}${td(medianCell, "right")}${td(stats.n, "right")}${td(rangeCell, "right")}${suggestCell}</tr>`,
     );
   }
 
@@ -433,12 +461,18 @@ function buildWindowSectionHtml(win, group, myIds) {
 // Top-level body builders
 // ---------------------------------------------------------------------------
 
-function buildTextBody({ windows, group }) {
+function buildTextBody({ windows, group, advice }) {
   const myIds = new Set(group.listings.map((l) => l.listing_id));
   const carHeader = getCarHeader(group, windows.map((w) => w.data));
   const out = [carHeader, ""];
 
-  out.push(buildSummaryTableText(windows, group, myIds));
+  if (advice?.summary) {
+    out.push("SUMMARY");
+    out.push(advice.summary);
+    out.push("");
+  }
+
+  out.push(buildSummaryTableText(windows, group, myIds, advice));
   out.push("");
 
   for (const id of CANONICAL_WINDOW_ORDER) {
@@ -461,9 +495,16 @@ function buildTextBody({ windows, group }) {
   return out.join("\n");
 }
 
-function buildHtmlBody({ windows, group }) {
+function buildHtmlBody({ windows, group, advice }) {
   const myIds = new Set(group.listings.map((l) => l.listing_id));
   const carHeader = getCarHeader(group, windows.map((w) => w.data));
+
+  const summaryBlock = advice?.summary
+    ? `<div style="background:#f0f7f1;border-left:4px solid #0a7d28;padding:10px 14px;margin:0 0 16px;border-radius:4px">
+    <div style="font-weight:700;font-size:12px;letter-spacing:.04em;color:#0a7d28;margin-bottom:4px">SUGGESTED PRICING SUMMARY</div>
+    <div style="color:#222">${escapeHtml(advice.summary)}</div>
+  </div>`
+    : "";
 
   const detailSections = CANONICAL_WINDOW_ORDER
     .map((id) => windows.find((w) => w.id === id))
@@ -481,7 +522,8 @@ function buildHtmlBody({ windows, group }) {
   return `<!doctype html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45;color:#111;max-width:900px">
   <h1 style="font-size:18px;margin:0 0 12px">${escapeHtml(carHeader)}</h1>
-  ${buildSummaryTableHtml(windows, group, myIds)}
+  ${summaryBlock}
+  ${buildSummaryTableHtml(windows, group, myIds, advice)}
   ${detailSections}
   <h3 style="font-size:14px;margin:18px 0 4px">Raw search links</h3>
   <ul style="margin:0;padding-left:20px;font-size:13px">${rawLinks}</ul>
@@ -506,11 +548,16 @@ function loadGroup(groupId) {
 async function main() {
   const env = loadEnvFile(ENV_PATH);
   const RESEND_API_KEY = process.env.RESEND_API_KEY || env.RESEND_API_KEY;
+  // The .env file is authoritative for OPENAI_API_KEY: an ambient shell export
+  // (e.g. ~/.zshrc pulling a different key from Keychain) must NOT shadow the
+  // dedicated turo-scraper key. File first, then fall back to process.env.
+  const OPENAI_API_KEY = env.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   const EMAIL_TO_RAW = process.env.EMAIL_TO || env.EMAIL_TO || "nickjoref@gmail.com";
   const EMAIL_TO = EMAIL_TO_RAW.split(",").map((s) => s.trim()).filter(Boolean);
   const EMAIL_FROM = process.env.EMAIL_FROM || env.EMAIL_FROM || "onboarding@resend.dev";
 
-  if (!RESEND_API_KEY) throw new Error(`RESEND_API_KEY missing (set in env or ${ENV_PATH})`);
+  const dryRun = process.env.DRY_RUN === "1";
+  if (!RESEND_API_KEY && !dryRun) throw new Error(`RESEND_API_KEY missing (set in env or ${ENV_PATH})`);
 
   const groupId = process.env.GROUP_ID;
   if (!groupId) throw new Error(`GROUP_ID env var is required (e.g. GROUP_ID=tiguans node src/send-email.js)`);
@@ -539,9 +586,18 @@ async function main() {
     return;
   }
 
+  const advice = await getPricingAdvice({ group, windows, apiKey: OPENAI_API_KEY });
+  console.error(`  pricing advice: summary=${advice.summary ? "yes" : "no"}, ${advice.suggestionsByWindowId.size} window suggestions`);
+
   const subject = `Turo Austin daily — ${runDate} — ${group.label}`;
-  const text = buildTextBody({ windows, group });
-  const html = buildHtmlBody({ windows, group });
+  const text = buildTextBody({ windows, group, advice });
+  const html = buildHtmlBody({ windows, group, advice });
+
+  if (dryRun) {
+    console.error(`DRY_RUN=1 — not sending. Text body below (html: ${html.length} chars):\n`);
+    process.stdout.write(text + "\n");
+    return;
+  }
 
   console.error(`Sending email to ${EMAIL_TO}...`);
   const sendResult = await sendViaResend({
