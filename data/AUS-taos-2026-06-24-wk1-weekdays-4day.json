@@ -1,0 +1,153 @@
+{
+  "generated_at": "2026-06-24T14:05:39.935Z",
+  "group_id": "taos",
+  "group_label": "Taos",
+  "window_id": "w1-weekdays",
+  "window_label": "wk1-weekdays-4day",
+  "query": {
+    "location": "Austin, TX",
+    "start_date": "2026-06-29",
+    "end_date": "2026-07-03",
+    "days": 4,
+    "make": "Volkswagen",
+    "models": [
+      "Taos"
+    ],
+    "search_url": "https://turo.com/us/en/search?country=US&defaultZoomLevel=11&endDate=07%2F03%2F2026&endTime=10%3A00&flexibleType=NOT_FLEXIBLE&isMapSearch=false&itemsPerPage=200&latitude=30.267153&location=Austin%2C+TX&locationType=CITY&longitude=-97.7430608&makes=Volkswagen&models=Taos&pickupType=ALL&placeId=ChIJLwPMoJm1RIYRetVp1EtGm10&region=TX&searchDurationType=DAILY&sortType=RELEVANCE&startDate=06%2F29%2F2026&startTime=10%3A00"
+  },
+  "total_listings_returned": 9,
+  "listings_before_city_filter": 9,
+  "listing_count": 9,
+  "allowed_city_slugs": [
+    "austin-tx"
+  ],
+  "owner_label": "Favorite Rental LLC",
+  "listings": [
+    {
+      "listing_id": "3350590",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 221,
+      "total_original_usd": 228,
+      "avg_daily_usd": 55.25,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3350590?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "1506470",
+      "year": 2022,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Favorite Rental LLC",
+      "is_mine": true,
+      "mine_label": "2022 Taos (1506470)",
+      "total_charged_usd": 204,
+      "total_original_usd": 210,
+      "avg_daily_usd": 51,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/1506470?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3011003",
+      "year": 2024,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 213,
+      "total_original_usd": 220,
+      "avg_daily_usd": 53.25,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3011003?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3272874",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 221,
+      "total_original_usd": 228,
+      "avg_daily_usd": 55.25,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3272874?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3306422",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 221,
+      "total_original_usd": 228,
+      "avg_daily_usd": 55.25,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3306422?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3086729",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 221,
+      "total_original_usd": 228,
+      "avg_daily_usd": 55.25,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3086729?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3051210",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 234,
+      "total_original_usd": 242,
+      "avg_daily_usd": 58.5,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3051210?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3374543",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 221,
+      "total_original_usd": 228,
+      "avg_daily_usd": 55.25,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3374543?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3375846",
+      "year": 2025,
+      "make": "Volkswagen",
+      "model": "Taos",
+      "city_slug": "austin-tx",
+      "host_name": "Mikhail (Austin’s Best Host)",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 245,
+      "total_original_usd": 253,
+      "avg_daily_usd": 61.25,
+      "listing_url": "https://turo.com/us/en/suv-rental/united-states/austin-tx/volkswagen/taos/3375846?endDate=07%2F03%2F2026&endTime=10%3A00&searchId=CmMJLihG&searchRegion=TX&startDate=06%2F29%2F2026&startTime=10%3A00"
+    }
+  ]
+}
