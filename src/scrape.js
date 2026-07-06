@@ -2,8 +2,8 @@
 // Multi-group Turo competitor scraper with persistent host-name cache.
 //
 // Reads config/my-listings.json (groups[] schema). For each group, runs a Turo
-// search for that make + models in Austin across 8 date windows (4 weekdays
-// Mon–Thu + 4 weekend Fri–Mon blocks, anchored to the next Monday strictly
+// search for that make + models in Austin across 16 date windows (8 weekdays
+// Mon–Thu + 8 weekend Fri–Mon blocks, anchored to the next Monday strictly
 // after today). For each result, looks up the host name from data/host-cache.json
 // first; only visits the listing's detail page when the cache is cold or stale
 // (>30 days old). Writes one JSON file per (group, window) into data/.
@@ -17,7 +17,7 @@
 //   HEADLESS=1  — run Chromium headless (default: visible window for bot-detection avoidance).
 //
 // Output filename: AUS-{group_id}-YYYY-MM-DD-{window_label}.json
-// Window labels: wk{1..4}-weekdays-4day, wk{1..4}-weekend-3day.
+// Window labels: wk{1..8}-weekdays-4day, wk{1..8}-weekend-3day.
 //
 // Multi-group runs share one browser/context for politeness and bot-detection
 // coherence. Inter-group delay: 3-8s randomized.
@@ -43,6 +43,7 @@ const ALLOWED_CITY_SLUGS = ["austin-tx"];
 const GROUP_ID_RE = /^[a-z0-9-]+$/;
 const HOST_CACHE_PATH = join(REPO_ROOT, "data", "host-cache.json");
 const HOST_CACHE_REFRESH_DAYS = 30;
+const WEEK_COUNT = 8;
 
 function ymd(d) {
   const yyyy = d.getFullYear();
@@ -64,7 +65,7 @@ function addDays(d, n) {
   return out;
 }
 
-// Generate 8 windows from today: 4 weekday (Mon–Thu, 4 nights) + 4 weekend
+// Generate 16 windows from today: 8 weekday (Mon–Thu, 4 nights) + 8 weekend
 // (Fri–Mon, 3 nights) blocks, anchored to the next Monday STRICTLY AFTER today.
 // If today is Mon, mon1 = today+7 (skip current partial week).
 // Returns array of specs in canonical render order (w1-weekdays, w1-weekend,
@@ -74,7 +75,7 @@ function generateWindowSpecs(today) {
   const daysToNextMon = ((1 - dow + 7) % 7) || 7;
   const mon1 = addDays(today, daysToNextMon);
   const specs = [];
-  for (let w = 1; w <= 4; w++) {
+  for (let w = 1; w <= WEEK_COUNT; w++) {
     const weekOffset = (w - 1) * 7;
     // Weekdays: pickup Mon, return Fri. 4 nights.
     specs.push({

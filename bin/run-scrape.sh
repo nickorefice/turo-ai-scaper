@@ -13,6 +13,7 @@
 #   AUTO_COMMIT=0    (override to 1 to enable commit/push; PAT must be installed)
 #   GH_TOKEN_FILE=~/.config/turo-scraper/gh-token
 #   SEND_EMAIL=1     (override to 0 to skip the per-group email loop)
+#   START_JITTER_MAX_SECONDS=0
 set -euo pipefail
 
 # Derive REPO from this script's location so future relocations don't
@@ -23,6 +24,7 @@ LOCK="/tmp/turo-scraper.lock"
 AUTO_COMMIT="${AUTO_COMMIT:-0}"
 GH_TOKEN_FILE="${GH_TOKEN_FILE:-$HOME/.config/turo-scraper/gh-token}"
 GH_REPO="nickorefice/turo-ai-scaper"
+START_JITTER_MAX_SECONDS="${START_JITTER_MAX_SECONDS:-0}"
 
 cd "$REPO"
 mkdir -p data logs
@@ -33,6 +35,14 @@ CONFIG="config/my-listings.json"
 SUCCESS_STAMP="logs/success-${DATE}.stamp"
 
 log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG" >&2; }
+
+# launchd fires at fixed wall-clock times. Add an optional random startup delay
+# so Turo does not see the same scrape cadence every day.
+if [ "${FORCE_RUN:-0}" != "1" ] && [ "$START_JITTER_MAX_SECONDS" -gt 0 ] 2>/dev/null; then
+  jitter_seconds=$((RANDOM % (START_JITTER_MAX_SECONDS + 1)))
+  log "startup jitter enabled: sleeping ${jitter_seconds}s (max ${START_JITTER_MAX_SECONDS}s)"
+  sleep "$jitter_seconds"
+fi
 
 # Lockfile (mkdir is atomic on macOS). Auto-clean on exit.
 if ! mkdir "$LOCK" 2>/dev/null; then
@@ -65,7 +75,7 @@ if [ "${FORCE_RUN:-0}" != "1" ] && [ -s "$SUCCESS_STAMP" ]; then
   exit 0
 fi
 
-# Validate per-(group, window) output files. With 8 windows per group, we
+# Validate per-(group, window) output files. With 16 windows per group, we
 # relax the "ok" criterion: a group is OK for emailing if AT LEAST ONE window
 # has listing_count >= 1. The email layout handles missing/empty windows
 # gracefully ("(no data)" rows in the summary table).
@@ -77,6 +87,10 @@ WINDOW_LABELS=(
   "wk2-weekdays-4day" "wk2-weekend-3day"
   "wk3-weekdays-4day" "wk3-weekend-3day"
   "wk4-weekdays-4day" "wk4-weekend-3day"
+  "wk5-weekdays-4day" "wk5-weekend-3day"
+  "wk6-weekdays-4day" "wk6-weekend-3day"
+  "wk7-weekdays-4day" "wk7-weekend-3day"
+  "wk8-weekdays-4day" "wk8-weekend-3day"
 )
 
 existing_data_ok=1

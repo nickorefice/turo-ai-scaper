@@ -2,7 +2,7 @@
 //
 // Turns one car group's discovered windows into:
 //   - a brief, fluff-free top-of-email summary, and
-//   - a suggested BASE daily price per window (the number to type into Turo).
+//   - a suggested whole-dollar BASE daily price per window (the number to type into Turo).
 //
 // Economics (all deterministic, computed in code):
 //   - effective target = lowest competitor avg_daily − $1  (the displayed price
@@ -32,6 +32,24 @@ const MAX_UNDERCUT = 9; // never suggest more than $9 under the lowest competito
 
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+function integerPriceBand({ defaultBaseRaw, floorBaseRaw, maxBaseRaw }) {
+  const rawValues = [defaultBaseRaw, floorBaseRaw, maxBaseRaw];
+  if (!rawValues.every((n) => typeof n === "number" && Number.isFinite(n))) {
+    return { defaultBase: null, floorBase: null, maxBase: null };
+  }
+
+  let floorBase = Math.ceil(floorBaseRaw);
+  let maxBase = Math.floor(maxBaseRaw);
+  if (floorBase > maxBase) {
+    const fallback = Math.max(0, Math.round(defaultBaseRaw));
+    floorBase = fallback;
+    maxBase = fallback;
+  }
+
+  const defaultBase = Math.min(maxBase, Math.max(floorBase, Math.round(defaultBaseRaw)));
+  return { defaultBase, floorBase, maxBase };
 }
 
 function daysBetween(fromYmd, toYmd) {
@@ -91,14 +109,19 @@ function windowEconomics({ data, discounts, schedule, turoMarkup, runDate }) {
   // search markup). Grossing the booking target up by both recovers the price
   // to SET in the calendar. (Empirically booking ≈ 92% of calendar.)
   const markup = typeof turoMarkup === "number" ? turoMarkup : 0;
-  const grossUp = (eff) => (eff == null ? null : round2(eff / ((1 - discountPct) * (1 - markup))));
+  const grossUp = (eff) => (eff == null ? null : eff / ((1 - discountPct) * (1 - markup)));
 
   let defaultEffective = null, defaultBase = null, maxBase = null, floorBase = null, net = null;
   if (stats.n > 0 && stats.min != null) {
     defaultEffective = round2(stats.min - 1);
-    defaultBase = grossUp(defaultEffective);
-    maxBase = grossUp(round2(stats.min)); // effective never above the cheapest comp
-    floorBase = grossUp(Math.max(PRICE_FLOOR, round2(stats.min - MAX_UNDERCUT)));
+    const band = integerPriceBand({
+      defaultBaseRaw: grossUp(defaultEffective),
+      maxBaseRaw: grossUp(round2(stats.min)), // effective never above the cheapest comp
+      floorBaseRaw: grossUp(Math.max(PRICE_FLOOR, round2(stats.min - MAX_UNDERCUT))),
+    });
+    defaultBase = band.defaultBase;
+    maxBase = band.maxBase;
+    floorBase = band.floorBase;
     net = share == null ? null : round2(defaultEffective * share);
   }
   return { stats, days, discountPct, leadDays, share, defaultEffective, defaultBase, maxBase, floorBase, net };
@@ -109,7 +132,7 @@ function windowEconomics({ data, discounts, schedule, turoMarkup, runDate }) {
 function clampBase(proposed, econ) {
   if (econ.defaultBase == null) return null; // no anchor → no suggestion
   if (typeof proposed !== "number" || !Number.isFinite(proposed)) return econ.defaultBase;
-  return round2(Math.min(econ.maxBase, Math.max(econ.floorBase, proposed)));
+  return Math.min(econ.maxBase, Math.max(econ.floorBase, Math.round(proposed)));
 }
 
 function buildPayload({ group, windows, econByWindow, damageResponsibility }) {
@@ -117,25 +140,46 @@ function buildPayload({ group, windows, econByWindow, damageResponsibility }) {
     car: group.label,
     location: "Austin, TX",
     earnings_plan: `More earnings plan: dynamic host share by booking lead time (host_share field per window; ~100% at 28+ days out). Damage responsibility $${damageResponsibility || 2500} per incident.`,
-    note: "suggested_price is the BASE daily price the owner types into Turo. Competitor prices are already discounted; the base is grossed up so the displayed price lands ~$1 under the cheapest comp.",
+    note: "suggested_price is the whole-dollar BASE daily price the owner types into Turo. Competitor prices are already discounted; the base is grossed up so the displayed price lands ~$1 under the cheapest comp. A '-' owner price means that car is booked for the window.",
     windows: windows.map(({ id, data }) => {
       const econ = econByWindow.get(id);
-      const mine = (data.listings || [])
-        .filter((t) => t.is_mine)
-        .map((t) => ({ label: `${t.year} ${t.model}`, daily: t.avg_daily_usd }));
+      const mineByListingId = new Map(
+        (data.listings || [])
+          .filter((t) => t.is_mine)
+          .map((t) => [String(t.listing_id), t]),
+      );
+      const mine = (group.listings || []).map((listing) => {
+        const found = mineByListingId.get(String(listing.listing_id));
+        if (!found) {
+          return {
+            label: listing.label || String(listing.listing_id),
+            display_price: "-",
+            status: "booked",
+            daily: null,
+          };
+        }
+        return {
+          label: listing.label || `${found.year} ${found.model}`,
+          display_price: `$${found.avg_daily_usd}`,
+          status: "available",
+          daily: found.avg_daily_usd,
+        };
+      });
+      const availableCount = mine.filter((t) => t.status === "available").length;
       const signal = econ.stats.n === 0 ? "none" : econ.stats.n <= 2 ? "weak" : econ.stats.n <= 4 ? "moderate" : "strong";
       return {
         window_id: id,
         label: data.window_label,
         days: data.query?.days,
         my_current_prices: mine,
-        i_am_listed: mine.length > 0,
-        my_listed_count: mine.length,
+        my_available_count: availableCount,
+        my_booked_count: Math.max(0, group.listings.length - availableCount),
         my_total_cars: group.listings.length,
+        all_my_cars_booked: availableCount === 0,
         signal,
         lowest_comp_effective: econ.stats.min,
         discount_pct: econ.discountPct,
-        suggested_base_default: econ.defaultBase, // base price to ENTER (already grossed up)
+        suggested_base_default: econ.defaultBase, // whole-dollar base price to ENTER (already grossed up)
         max_base: econ.maxBase,
         floor_base: econ.floorBase,
         lead_days: econ.leadDays,
@@ -150,28 +194,31 @@ function buildPayload({ group, windows, econByWindow, damageResponsibility }) {
 const SYSTEM_PROMPT = `You are a Turo pricing assistant for a small fleet in Austin, TX. The owners (Nick & Kenny) are on the "More earnings" plan: their host share rises with how far ahead a guest books, reaching ~100% at 28+ days out, but they carry a damage responsibility per incident (see earnings_plan in the data).
 
 For each window you are given precomputed economics. Do NOT recompute them — use the fields as given:
-- "suggested_base_default" is the BASE daily price to enter in Turo (already grossed up for the owner's discount so the displayed price lands ~$1 under "lowest_comp_effective"). Default suggested_price to this.
+- "suggested_base_default" is the whole-dollar BASE daily price to enter in Turo (already grossed up for the owner's discount so the displayed price lands ~$1 under "lowest_comp_effective"). Default suggested_price to this.
 - You MAY nudge suggested_price within [floor_base, max_base] with a short reason, but never outside that band.
+- suggested_price MUST be an integer. Turo does not allow cents in calendar prices.
 - "host_share" is the fraction the owner keeps if booked at the current lead time; "high_value": true means a ~100%-share window (booked far ahead).
 - "signal" ("strong"|"moderate"|"weak"|"none") is the competitor-data strength. When "weak", stay near suggested_base_default.
+- "my_current_prices" has one entry per owned car. display_price "-" means that car is already booked for that window; never call "-" unlisted.
 
 Pricing/strategy logic:
 - Anchor to suggested_base_default. Output suggested_price as the BASE price.
 - Omit windows with no competitors (signal "none") from your output.
 
 Write the summary for two owners skimming on a phone who need to act:
-- 2-4 short sentences MAX. No greetings, no data recap, no generic filler ("adjust for competitiveness", "headroom available").
-- Cite BASE prices (the suggested_price you output) and the owner's current price. Every price you cite MUST equal a suggested_price you output — never cite the comp or median as the recommendation.
-- Lead with the biggest gap between current price and suggested base.
-- PRIORITIZE the high_value windows: a booking 28+ days out earns ~100%, so explicitly flag the best high_value window to lock in early.
-- Listing status is precomputed: only say "unlisted"/"add it" when "i_am_listed" is false; if my_listed_count is below my_total_cars but >0 you may note "only one of your cars is listed". Never claim a window is unlisted when i_am_listed is true.
+- Return 3-6 short bullet points as one newline-separated string; each line must start with "- ".
+- Call out which weeks/windows are most off and the exact prices: current owner display_price(s) versus suggested_price.
+- Cite BASE prices (the suggested_price you output) and the owner's current display_price. Every recommended price you cite MUST equal a suggested_price you output — never cite the comp or median as the recommendation.
+- Lead with the biggest actionable gap between current available price and suggested base.
+- PRIORITIZE the high_value windows: a booking 28+ days out earns ~100%, so explicitly flag the best high_value window to lock in early if it is available.
+- If a car shows "-", say it is booked. Do not recommend a price change for a booked car.
 - Do NOT mention competitor counts, "N", "signal", "thin/weak data", or data quality.
 
 Output STRICT JSON only, no prose outside JSON, in this exact shape:
 {
-  "summary": "e.g. 'Wk1 weekdays is the big miss: you're at $66.5, list base ~$122. Wk4 is your priority — booked 28+ days out you keep ~100%, so lock it in at base ~$76. You're unlisted Wk1 weekend; add it.'",
+  "summary": "e.g. '- Wk 1 weekdays is the biggest miss: current $66.5 vs suggested base $122.\\n- Wk 4 weekend is high-value; if available, set base $76 early.\\n- Wk 2 weekdays shows - for one car, so that car is booked.'",
   "windows": [
-    { "window_id": "w1-weekdays", "suggested_price": 122.42, "reason": "one short clause" }
+    { "window_id": "w1-weekdays", "suggested_price": 122, "reason": "one short clause" }
   ]
 }`;
 

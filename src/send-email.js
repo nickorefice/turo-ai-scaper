@@ -36,24 +36,19 @@ const REPO_ROOT = join(__dirname, "..");
 
 const ENV_PATH = join(homedir(), ".config", "turo-scraper", ".env");
 
-// Canonical order for the 8 windows (used to sort discovered files).
-const CANONICAL_WINDOW_ORDER = [
-  "w1-weekdays", "w1-weekend",
-  "w2-weekdays", "w2-weekend",
-  "w3-weekdays", "w3-weekend",
-  "w4-weekdays", "w4-weekend",
-];
-
-const WINDOW_DISPLAY_LABEL = {
-  "w1-weekdays": "Wk 1 weekdays",
-  "w1-weekend":  "Wk 1 weekend",
-  "w2-weekdays": "Wk 2 weekdays",
-  "w2-weekend":  "Wk 2 weekend",
-  "w3-weekdays": "Wk 3 weekdays",
-  "w3-weekend":  "Wk 3 weekend",
-  "w4-weekdays": "Wk 4 weekdays",
-  "w4-weekend":  "Wk 4 weekend",
-};
+// Canonical order for the 16 windows (used to sort discovered files).
+const WEEK_COUNT = 8;
+const CANONICAL_WINDOW_ORDER = Array.from({ length: WEEK_COUNT }, (_, i) => {
+  const week = i + 1;
+  return [`w${week}-weekdays`, `w${week}-weekend`];
+}).flat();
+const WINDOW_ORDER_INDEX = new Map(CANONICAL_WINDOW_ORDER.map((id, i) => [id, i]));
+const WINDOW_DISPLAY_LABEL = Object.fromEntries(
+  CANONICAL_WINDOW_ORDER.map((id) => {
+    const [, week, kind] = id.match(/^w(\d+)-(weekdays|weekend)$/);
+    return [id, `Wk ${week} ${kind}`];
+  }),
+);
 
 function loadEnvFile(path) {
   const env = {};
@@ -144,6 +139,33 @@ function suggestedFor(advice, windowId) {
   return advice?.suggestionsByWindowId?.get(windowId)?.price ?? null;
 }
 
+function summaryLooksBulleted(summary) {
+  return String(summary || "")
+    .split(/\r?\n/)
+    .some((line) => /^\s*[-*]\s+/.test(line));
+}
+
+function summaryBulletLines(summary) {
+  return String(summary || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^[-*]\s+/, ""));
+}
+
+function formatSummaryText(summary) {
+  if (!summaryLooksBulleted(summary)) return summary;
+  return summaryBulletLines(summary).map((line) => `- ${line}`).join("\n");
+}
+
+function formatSummaryHtml(summary) {
+  if (!summaryLooksBulleted(summary)) {
+    return `<div style="color:#222">${escapeHtml(summary)}</div>`;
+  }
+  const bullets = summaryBulletLines(summary);
+  return `<ul style="margin:0;padding-left:20px;color:#222">${bullets.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+}
+
 function shortDay(dateStr) {
   // "2026-06-01" -> "Mon 6/1"
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -172,7 +194,7 @@ function getCarHeader(group, windows) {
 }
 
 // Returns the price + rank info for one of my listings in one window,
-// or null if not listed in that window.
+// or null if the owned car is not present in search results for that window.
 function getMyEntry(window, listing, myIds) {
   const mine = window.listings.find((t) => t.listing_id === listing.listing_id);
   if (!mine) return null;
@@ -231,7 +253,9 @@ function discoverWindows(groupId, runDate) {
     }
   }
   // Sort canonically
-  found.sort((a, b) => CANONICAL_WINDOW_ORDER.indexOf(a.id) - CANONICAL_WINDOW_ORDER.indexOf(b.id));
+  found.sort((a, b) =>
+    (WINDOW_ORDER_INDEX.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+    (WINDOW_ORDER_INDEX.get(b.id) ?? Number.MAX_SAFE_INTEGER));
   return found;
 }
 
@@ -284,7 +308,7 @@ function buildSummaryTableText(windows, group, myIds, advice) {
     const dateRange = formatDateRange(win.data);
     const mineCells = group.listings.map((l) => {
       const me = getMyEntry(win.data, l, myIds);
-      return padL(me ? `$${me.daily}` : "—", W_MINE);
+      return padL(me ? fmtPrice(me.daily) : "-", W_MINE);
     });
     const medianCell = stats.median != null ? `$${stats.median.toFixed(2)}` : "—";
     const rangeCell = stats.n > 0 ? `$${stats.min}–$${stats.max}` : "—";
@@ -327,7 +351,7 @@ function buildSummaryTableHtml(windows, group, myIds, advice) {
     const mineCells = group.listings
       .map((l) => {
         const me = getMyEntry(win.data, l, myIds);
-        return td(me ? `$${me.daily}` : "—", "right", me ? "font-weight:600" : "color:#999");
+        return td(me ? fmtPrice(me.daily) : "-", "right", me ? "font-weight:600" : "color:#999");
       })
       .join("");
     const medianCell = stats.median != null ? `$${stats.median.toFixed(2)}` : "—";
@@ -369,7 +393,7 @@ function buildWindowSectionText(win, group, myIds) {
   for (const l of group.listings) {
     const me = getMyEntry(win.data, l, myIds);
     if (!me) {
-      lines.push(`  ${l.label}: not listed`);
+      lines.push(`  ${l.label}: booked (-)`);
       continue;
     }
     const vsMedian = stats.median != null ? me.daily - stats.median : null;
@@ -424,7 +448,7 @@ function buildWindowSectionHtml(win, group, myIds) {
   // Mine
   const mineLines = group.listings.map((l) => {
     const me = getMyEntry(win.data, l, myIds);
-    if (!me) return `<div style="color:#999">${escapeHtml(l.label)}: not listed</div>`;
+    if (!me) return `<div style="color:#999">${escapeHtml(l.label)}: booked (-)</div>`;
     const vsMedian = stats.median != null ? me.daily - stats.median : null;
     let vsStr = "";
     if (vsMedian != null) {
@@ -468,11 +492,12 @@ function buildTextBody({ windows, group, advice }) {
 
   if (advice?.summary) {
     out.push("SUMMARY");
-    out.push(advice.summary);
+    out.push(formatSummaryText(advice.summary));
     out.push("");
   }
 
   out.push(buildSummaryTableText(windows, group, myIds, advice));
+  out.push("A '-' in your car columns means that car is booked for that window.");
   out.push("SUGGEST = the per-day price to set in your Turo CALENDAR (not the booking total).");
   out.push("Turo knocks ~8% off your calendar price (3% trip discount + ~5% extra) to get the");
   out.push("booking price guests see, so this is grossed up to land your booking ~$1 under the");
@@ -506,7 +531,7 @@ function buildHtmlBody({ windows, group, advice }) {
   const summaryBlock = advice?.summary
     ? `<div style="background:#f0f7f1;border-left:4px solid #0a7d28;padding:10px 14px;margin:0 0 16px;border-radius:4px">
     <div style="font-weight:700;font-size:12px;letter-spacing:.04em;color:#0a7d28;margin-bottom:4px">SUGGESTED PRICING SUMMARY</div>
-    <div style="color:#222">${escapeHtml(advice.summary)}</div>
+    ${formatSummaryHtml(advice.summary)}
   </div>`
     : "";
 
@@ -529,7 +554,7 @@ function buildHtmlBody({ windows, group, advice }) {
   ${summaryBlock}
   ${buildSummaryTableHtml(windows, group, myIds, advice)}
   <div style="font-size:12px;color:#666;margin:-12px 0 18px;max-width:680px">
-    <strong>Suggested</strong> = the per-day price to set in your Turo <strong>calendar</strong> (not the booking total). Turo knocks ~8% off your calendar price (3% trip discount + ~5% extra) to get the booking price guests see, so this is grossed up to land your booking ~$1 under the cheapest comp's. Far-out windows (28+ days) earn ~100% host share — prioritize filling those.
+    A <strong>-</strong> in one of your car columns means that car is booked for that window. <strong>Suggested</strong> = the per-day price to set in your Turo <strong>calendar</strong> (not the booking total). Turo knocks ~8% off your calendar price (3% trip discount + ~5% extra) to get the booking price guests see, so this is grossed up to land your booking ~$1 under the cheapest comp's. Far-out windows (28+ days) earn ~100% host share — prioritize filling those.
   </div>
   ${detailSections}
   <h3 style="font-size:14px;margin:18px 0 4px">Raw search links</h3>
@@ -574,7 +599,7 @@ async function main() {
 
   console.error(`Building email for group=${groupId} date=${runDate}`);
   const windows = discoverWindows(groupId, runDate);
-  console.error(`  discovered ${windows.length}/8 windows: ${windows.map((w) => w.id).join(", ") || "(none)"}`);
+  console.error(`  discovered ${windows.length}/${CANONICAL_WINDOW_ORDER.length} windows: ${windows.map((w) => w.id).join(", ") || "(none)"}`);
 
   if (windows.length === 0) {
     console.error(`No window data found for group ${groupId} on ${runDate} — sending alert`);

@@ -22,7 +22,9 @@
     <!--
       Try three times each morning. bin/run-scrape.sh is idempotent:
       once a daily success stamp exists, later invocations skip without
-      touching Turo or sending duplicate email.
+      touching Turo or sending duplicate email. The wrapper adds up to
+      45 minutes of random startup jitter so the scrape does not hit Turo
+      at exactly the same wall-clock time every day.
     -->
     <key>StartCalendarInterval</key>
     <array>
@@ -61,6 +63,8 @@
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>AUTO_COMMIT</key>
         <string>1</string>
+        <key>START_JITTER_MAX_SECONDS</key>
+        <string>2700</string>
     </dict>
 </dict>
 </plist>
