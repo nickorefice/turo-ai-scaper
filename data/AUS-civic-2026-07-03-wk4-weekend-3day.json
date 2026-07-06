@@ -1,0 +1,111 @@
+{
+  "generated_at": "2026-07-03T14:20:28.250Z",
+  "group_id": "civic",
+  "group_label": "Civic",
+  "window_id": "w4-weekend",
+  "window_label": "wk4-weekend-3day",
+  "query": {
+    "location": "Austin, TX",
+    "start_date": "2026-07-31",
+    "end_date": "2026-08-03",
+    "days": 3,
+    "make": "Honda",
+    "models": [
+      "Civic"
+    ],
+    "search_url": "https://turo.com/us/en/search?country=US&defaultZoomLevel=11&endDate=08%2F03%2F2026&endTime=10%3A00&flexibleType=NOT_FLEXIBLE&isMapSearch=false&itemsPerPage=200&latitude=30.267153&location=Austin%2C+TX&locationType=CITY&longitude=-97.7430608&makes=Honda&models=Civic&pickupType=ALL&placeId=ChIJLwPMoJm1RIYRetVp1EtGm10&region=TX&searchDurationType=DAILY&sortType=RELEVANCE&startDate=07%2F31%2F2026&startTime=10%3A00"
+  },
+  "total_listings_returned": 8,
+  "listings_before_city_filter": 8,
+  "listing_count": 6,
+  "allowed_city_slugs": [
+    "austin-tx"
+  ],
+  "owner_label": "Favorite Rental LLC",
+  "listings": [
+    {
+      "listing_id": "1737992",
+      "year": 2016,
+      "make": "Honda",
+      "model": "Civic",
+      "city_slug": "austin-tx",
+      "host_name": "Brandon",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 138,
+      "total_original_usd": 154,
+      "avg_daily_usd": 46,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/honda/civic/1737992?endDate=08%2F03%2F2026&endTime=10%3A00&searchId=ChfX7hpo&searchRegion=TX&startDate=07%2F31%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3635645",
+      "year": 2026,
+      "make": "Honda",
+      "model": "Civic",
+      "city_slug": "austin-tx",
+      "host_name": "May",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 170,
+      "total_original_usd": 175,
+      "avg_daily_usd": 56.67,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/honda/civic/3635645?endDate=08%2F03%2F2026&endTime=10%3A00&searchId=ChfX7hpo&searchRegion=TX&startDate=07%2F31%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3220556",
+      "year": 2017,
+      "make": "Honda",
+      "model": "Civic",
+      "city_slug": "austin-tx",
+      "host_name": "Rich",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 144,
+      "total_original_usd": 149,
+      "avg_daily_usd": 48,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/honda/civic/3220556?endDate=08%2F03%2F2026&endTime=10%3A00&searchId=ChfX7hpo&searchRegion=TX&startDate=07%2F31%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3385530",
+      "year": 2015,
+      "make": "Honda",
+      "model": "Civic",
+      "city_slug": "austin-tx",
+      "host_name": "Na",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 137,
+      "total_original_usd": 141,
+      "avg_daily_usd": 45.67,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/honda/civic/3385530?endDate=08%2F03%2F2026&endTime=10%3A00&searchId=ChfX7hpo&searchRegion=TX&startDate=07%2F31%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3667406",
+      "year": 2021,
+      "make": "Honda",
+      "model": "Civic",
+      "city_slug": "austin-tx",
+      "host_name": "Taofeek",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 145,
+      "total_original_usd": 150,
+      "avg_daily_usd": 48.33,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/honda/civic/3667406?endDate=08%2F03%2F2026&endTime=10%3A00&searchId=ChfX7hpo&searchRegion=TX&startDate=07%2F31%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3065470",
+      "year": 2013,
+      "make": "Honda",
+      "model": "Civic",
+      "city_slug": "austin-tx",
+      "host_name": "Sara",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 131,
+      "total_original_usd": 139,
+      "avg_daily_usd": 43.67,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/honda/civic/3065470?endDate=08%2F03%2F2026&endTime=10%3A00&isDelivery=true&locationId=7904781&searchId=ChfX7hpo&searchRegion=TX&startDate=07%2F31%2F2026&startTime=10%3A00&vehicleLocationId=7904781"
+    }
+  ]
+}
