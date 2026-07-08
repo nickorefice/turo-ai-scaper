@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-07-08T15:25:40.956Z",
+  "group_id": "2-series",
+  "group_label": "BMW 2 Series",
+  "window_id": "w3-weekdays",
+  "window_label": "wk3-weekdays-4day",
+  "query": {
+    "location": "Austin, TX",
+    "start_date": "2026-07-27",
+    "end_date": "2026-07-31",
+    "days": 4,
+    "make": "BMW",
+    "models": [
+      "2 Series"
+    ],
+    "search_url": "https://turo.com/us/en/search?country=US&defaultZoomLevel=11&endDate=07%2F31%2F2026&endTime=10%3A00&flexibleType=NOT_FLEXIBLE&isMapSearch=false&itemsPerPage=200&latitude=30.267153&location=Austin%2C+TX&locationType=CITY&longitude=-97.7430608&makes=BMW&models=2+Series&pickupType=ALL&placeId=ChIJLwPMoJm1RIYRetVp1EtGm10&region=TX&searchDurationType=DAILY&sortType=RELEVANCE&startDate=07%2F27%2F2026&startTime=10%3A00"
+  },
+  "total_listings_returned": 2,
+  "listings_before_city_filter": 2,
+  "listing_count": 2,
+  "allowed_city_slugs": [
+    "austin-tx"
+  ],
+  "owner_label": "Favorite Rental LLC",
+  "listings": [
+    {
+      "listing_id": "3369027",
+      "year": 2024,
+      "make": "BMW",
+      "model": "2 Series",
+      "city_slug": "austin-tx",
+      "host_name": "DM",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 327,
+      "total_original_usd": 338,
+      "avg_daily_usd": 81.75,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/bmw/2-series/3369027?endDate=07%2F31%2F2026&endTime=10%3A00&searchId=wwjTIoSZ&searchRegion=TX&startDate=07%2F27%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3734843",
+      "year": 2024,
+      "make": "BMW",
+      "model": "2 Series",
+      "city_slug": "austin-tx",
+      "host_name": "Lisa",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 336,
+      "total_original_usd": 375,
+      "avg_daily_usd": 84,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/bmw/2-series/3734843?endDate=07%2F31%2F2026&endTime=10%3A00&searchId=wwjTIoSZ&searchRegion=TX&startDate=07%2F27%2F2026&startTime=10%3A00"
+    }
+  ]
+}
