@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-07-15T15:03:27.116Z",
+  "group_id": "corolla-hybrid",
+  "group_label": "Corolla Hybrid",
+  "window_id": "w1-weekend",
+  "window_label": "wk1-weekend-3day",
+  "query": {
+    "location": "Austin, TX",
+    "start_date": "2026-07-24",
+    "end_date": "2026-07-27",
+    "days": 3,
+    "make": "Toyota",
+    "models": [
+      "Corolla Hybrid"
+    ],
+    "search_url": "https://turo.com/us/en/search?country=US&defaultZoomLevel=11&endDate=07%2F27%2F2026&endTime=10%3A00&flexibleType=NOT_FLEXIBLE&isMapSearch=false&itemsPerPage=200&latitude=30.267153&location=Austin%2C+TX&locationType=CITY&longitude=-97.7430608&makes=Toyota&models=Corolla+Hybrid&pickupType=ALL&placeId=ChIJLwPMoJm1RIYRetVp1EtGm10&region=TX&searchDurationType=DAILY&sortType=RELEVANCE&startDate=07%2F24%2F2026&startTime=10%3A00"
+  },
+  "total_listings_returned": 3,
+  "listings_before_city_filter": 3,
+  "listing_count": 3,
+  "allowed_city_slugs": [
+    "austin-tx"
+  ],
+  "owner_label": "Favorite Rental LLC",
+  "listings": [
+    {
+      "listing_id": "2010851",
+      "year": 2023,
+      "make": "Toyota",
+      "model": "Corolla Hybrid",
+      "city_slug": "austin-tx",
+      "host_name": "SwiftRentz LLC",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 184,
+      "total_original_usd": 190,
+      "avg_daily_usd": 61.33,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/2010851?endDate=07%2F27%2F2026&endTime=10%3A00&searchId=QM97mqyX&searchRegion=TX&startDate=07%2F24%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "3691223",
+      "year": 2025,
+      "make": "Toyota",
+      "model": "Corolla Hybrid",
+      "city_slug": "austin-tx",
+      "host_name": "S RAM",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 165,
+      "total_original_usd": 174,
+      "avg_daily_usd": 55,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/3691223?endDate=07%2F27%2F2026&endTime=10%3A00&searchId=QM97mqyX&searchRegion=TX&startDate=07%2F24%2F2026&startTime=10%3A00"
+    },
+    {
+      "listing_id": "2010737",
+      "year": 2023,
+      "make": "Toyota",
+      "model": "Corolla Hybrid",
+      "city_slug": "austin-tx",
+      "host_name": "SwiftRentz LLC",
+      "is_mine": false,
+      "mine_label": null,
+      "total_charged_usd": 193,
+      "total_original_usd": 200,
+      "avg_daily_usd": 64.33,
+      "listing_url": "https://turo.com/us/en/car-rental/united-states/austin-tx/toyota/corolla-hybrid/2010737?endDate=07%2F27%2F2026&endTime=10%3A00&searchId=QM97mqyX&searchRegion=TX&startDate=07%2F24%2F2026&startTime=10%3A00"
+    }
+  ]
+}
