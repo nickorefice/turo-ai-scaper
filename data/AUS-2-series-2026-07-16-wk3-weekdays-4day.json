@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-07-16T15:29:46.216Z",
+  "group_id": "2-series",
+  "group_label": "BMW 2 Series",
+  "window_id": "w3-weekdays",
+  "window_label": "wk3-weekdays-4day",
+  "query": {
+    "location": "Austin, TX",
+    "start_date": "2026-08-03",
+    "end_date": "2026-08-07",
+    "days": 4,
+    "make": "BMW",
+    "models": [
+      "2 Series"
+    ],
+    "search_url": "https://turo.com/us/en/search?country=US&defaultZoomLevel=11&endDate=08%2F07%2F2026&endTime=10%3A00&flexibleType=NOT_FLEXIBLE&isMapSearch=false&itemsPerPage=200&latitude=30.267153&location=Austin%2C+TX&locationType=CITY&longitude=-97.7430608&makes=BMW&models=2+Series&pickupType=ALL&placeId=ChIJLwPMoJm1RIYRetVp1EtGm10&region=TX&searchDurationType=DAILY&sortType=RELEVANCE&startDate=08%2F03%2F2026&startTime=10%3A00"
+  },
+  "total_listings_returned": 0,
+  "listings_before_city_filter": 0,
+  "listing_count": 0,
+  "allowed_city_slugs": [
+    "austin-tx"
+  ],
+  "owner_label": "Favorite Rental LLC",
+  "listings": []
+}
